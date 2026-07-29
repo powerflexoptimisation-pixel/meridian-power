@@ -156,6 +156,100 @@ function GenerationMix({ market, generation }) {
   );
 }
 
+function fmtDay(ts) {
+  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
+}
+
+function HistoryChart({ market }) {
+  const [days, setDays] = useState(30);
+  const [history, setHistory] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/history?country=${market.code}&days=${days}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.error) setError(json.error);
+        else setHistory(json);
+      })
+      .catch((e) => !cancelled && setError(String(e.message || e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [market.code, days]);
+
+  const chartData = (history?.daily || []).map((d) => ({
+    day: fmtDay(d.day),
+    avg: d.avg,
+    min: d.min,
+    max: d.max,
+  }));
+
+  const coverage = history?.coverage;
+  const hasData = coverage && coverage.n_points > 0;
+
+  return (
+    <div className="border border-[#2a2b28] bg-[#151614] p-5 xl:col-span-2">
+      <div className="flex items-baseline justify-between mb-4">
+        <div>
+          <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Price History</h3>
+          <p className="text-xs text-stone-600 mt-0.5">
+            {market.name} &middot; daily avg / min / max &middot;{" "}
+            {hasData
+              ? `${fmtDay(coverage.earliest)} → ${fmtDay(coverage.latest)} stored`
+              : "no data stored yet"}
+          </p>
+        </div>
+        <div className="flex gap-1">
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`px-3 py-1 text-xs font-mono border ${days === d ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+            >
+              {d}D
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="border border-red-900 bg-red-950/40 text-red-300 text-xs font-mono px-4 py-2 mb-3">
+          {error.includes("relation") || error.includes("does not exist")
+            ? "Base de données pas encore initialisée — exécute schema.sql (voir README)."
+            : error}
+        </div>
+      )}
+
+      {!error && !loading && !hasData && (
+        <div className="border border-[#2a2b28] text-stone-500 text-xs font-mono px-4 py-6 text-center">
+          Aucune donnée historique stockée pour ce marché. Lance un backfill :
+          <br />
+          <code className="text-amber-400">/api/admin/backfill?days={days}&country={market.code}</code>
+        </div>
+      )}
+
+      {hasData && (
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
+            <XAxis dataKey="day" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={Math.floor(chartData.length / 10)} />
+            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "#8a8a86" }} />
+            <Line type="monotone" dataKey="max" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+            <Line type="monotone" dataKey="avg" stroke="#F2B84B" strokeWidth={2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="min" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
 export default function MeridianPower() {
   const [activeMarket, setActiveMarket] = useState("DE");
   const [dataByMarket, setDataByMarket] = useState({});
@@ -220,6 +314,7 @@ export default function MeridianPower() {
       <main className="px-6 pb-8 grid grid-cols-1 xl:grid-cols-2 gap-5">
         <PriceChart market={market} prices={current.prices} />
         <GenerationMix market={market} generation={current.generation} />
+        <HistoryChart market={market} />
       </main>
 
       <footer className="px-6 py-4 border-t border-[#2a2b28] text-[10px] font-mono text-stone-600 flex justify-between">
