@@ -1,13 +1,17 @@
-// app/api/debug/route.js — TEMPORAIRE, à supprimer après diagnostic
+// app/api/debug/route.js — TEMPORAIRE
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
   const sql = neon(process.env.DATABASE_URL);
-  const prices = await sql`SELECT country, COUNT(*) AS n, MIN(ts) AS min_ts, MAX(ts) AS max_ts FROM market_prices GROUP BY country`;
-  const gen = await sql`SELECT country, COUNT(*) AS n FROM market_generation GROUP BY country`;
-  const logs = await sql`SELECT * FROM collection_log ORDER BY ran_at DESC LIMIT 10`;
-  return NextResponse.json({ prices, gen, logs });
+  const country = new URL(request.url).searchParams.get("country") || "DE";
+
+  const unfiltered = await sql`SELECT country, COUNT(*) AS n FROM market_prices GROUP BY country`;
+  const filtered = await sql`SELECT COUNT(*) AS n FROM market_prices WHERE country = ${country}`;
+  const filteredExplicit = await sql`SELECT COUNT(*) AS n FROM market_prices WHERE country = 'DE'`;
+  const sampleRows = await sql`SELECT country, length(country) AS len, ts FROM market_prices LIMIT 3`;
+
+  return NextResponse.json({ country_param: country, unfiltered, filtered, filteredExplicit, sampleRows });
 }
