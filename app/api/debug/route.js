@@ -21,11 +21,11 @@ export async function GET() {
   try {
     const token = await getToken();
     const paths = [
-      `https://ds.netztransparenz.de/api/v1/data/redispatch/2026-07-01T00:00:00/2026-07-05T00:00:00`,
-      `https://ds.netztransparenz.de/api/v1/data/reBAP`,
-      `https://ds.netztransparenz.de/api/v1/data/reBAP/Qualitaetsgesichert`,
-      `https://ds.netztransparenz.de/api/v1/data/RZSaldo/Qualitaetsgesichert`,
-      `https://ds.netztransparenz.de/api/v1/data/Redispatch`,
+      `https://ds.netztransparenz.de/api/v1/data/nrvsaldo/reBAP/Qualitaetsgesichert/2026-07-01T00:00:00/2026-07-02T00:00:00`,
+      `https://ds.netztransparenz.de/api/v1/data/NrvSaldo/reBAP/Qualitaetsgesichert/2026-07-01T00:00:00/2026-07-02T00:00:00`,
+      `https://ds.netztransparenz.de/api/v1/data/reBAP/Qualitaetsgesichert/2026-07-01T00:00:00/2026-07-02T00:00:00`,
+      `https://ds.netztransparenz.de/api/v1/data/RZSaldo/Qualitaetsgesichert/2026-07-01T00:00:00/2026-07-02T00:00:00`,
+      `https://ds.netztransparenz.de/api/v1/data/NrvSaldo/RZSaldo/Qualitaetsgesichert/2026-07-01T00:00:00/2026-07-02T00:00:00`,
     ];
     const results = {};
     for (const url of paths) {
