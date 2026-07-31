@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { collectCountry, DOMAINS } from "../../../lib/entsoe";
+import { collectLatest, DOMAINS } from "../../../lib/entsoe";
 
 export const dynamic = "force-dynamic"; // toujours passer par notre logique de cache interne (revalidate: 900)
 
@@ -15,7 +15,7 @@ export async function GET(request) {
   }
 
   try {
-    const data = await collectCountry(country);
+    const data = await collectLatest(country);
     return NextResponse.json(data, {
       headers: { "Cache-Control": "s-maxage=900, stale-while-revalidate=300" },
     });
