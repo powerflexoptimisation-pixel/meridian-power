@@ -11,6 +11,7 @@ import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
 export const dynamic = "force-dynamic";
 
 function csvEscape(v) {
+  if (v instanceof Date) v = v.toISOString();
   const s = String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
