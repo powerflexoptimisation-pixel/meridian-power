@@ -12,6 +12,7 @@ import { DOMAINS, RELEVANT_NEIGHBORS, fetchNetFlow } from "../../../lib/entsoe";
 import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
