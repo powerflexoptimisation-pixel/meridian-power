@@ -9,7 +9,7 @@
 //   - residualLoad  : consumption - windPv (définition standard "residual load")
 
 import { NextResponse } from "next/server";
-import { DOMAINS } from "../../../lib/entsoe";
+import { DOMAINS, fetchLoadForecast } from "../../../lib/entsoe";
 import { getLoadHistory, getGenerationHistory } from "../../../lib/db";
 import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
 
@@ -53,26 +53,45 @@ export async function GET(request) {
   }
 
   try {
-    const [loadPoints, genPoints] = await Promise.all([
+    const [loadPoints, genPoints, forecastResult] = await Promise.all([
       getLoadHistory(country, from.toISOString(), to.toISOString()),
       getGenerationHistory(country, from.toISOString(), to.toISOString()),
+      fetchLoadForecast(country, from, to).catch(() => ({ points: [] })),
     ]);
 
     const genByTs = new Map(genPoints.map((row) => [row.timestamp, row]));
+    const forecastByTs = new Map((forecastResult.points || []).map((p) => [p.timestamp, p.load_mw]));
+
     const series = loadPoints.map((lp) => {
       const gen = genByTs.get(lp.timestamp) || {};
       const windPv = WIND_PV.reduce((s, k) => s + (gen[k] || 0), 0);
       const otherRenew = OTHER_RENEWABLES.reduce((s, k) => s + (gen[k] || 0), 0);
+      const forecast = forecastByTs.get(lp.timestamp);
       return {
         timestamp: lp.timestamp,
         consumption: lp.load_mw,
+        consumptionForecast: forecast !== undefined ? forecast : null,
         windPv,
         otherRenew,
         residualLoad: lp.load_mw - windPv,
       };
     });
 
-    return NextResponse.json({ country, from: from.toISOString(), to: to.toISOString(), series });
+    const withForecast = series.filter((r) => r.consumptionForecast !== null);
+    const forecastErrorMwAvg = withForecast.length
+      ? withForecast.reduce((s, r) => s + Math.abs(r.consumption - r.consumptionForecast), 0) / withForecast.length
+      : null;
+    const forecastErrorPct = withForecast.length
+      ? (withForecast.reduce((s, r) => s + Math.abs(r.consumption - r.consumptionForecast) / r.consumption, 0) / withForecast.length) * 100
+      : null;
+
+    return NextResponse.json({
+      country,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      series,
+      forecastAccuracy: { mae_mw: forecastErrorMwAvg, mape_pct: forecastErrorPct, n_points: withForecast.length },
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
   }
