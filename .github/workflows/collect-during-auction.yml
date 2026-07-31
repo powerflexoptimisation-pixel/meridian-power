@@ -1,0 +1,29 @@
+# .github/workflows/collect-during-auction.yml
+#
+# Le résultat de l'enchère day-ahead ENTSO-E est publié entre ~12h et ~13h
+# CET/CEST. Le cron natif Vercel (plan Hobby) est limité à 1 exécution/jour,
+# donc ce workflow appelle /api/cron/collect plusieurs fois entre 13h et 15h
+# heure de marché pour capter la publication de façon fiable, en plus du cron
+# Vercel quotidien qui reste en place comme filet de sécurité.
+#
+# Fenêtre en UTC: 12:00 -> 15:00, ce qui couvre 13h-15h heure de marché aussi
+# bien en CET (hiver, UTC+1) qu'en CEST (été, UTC+2) sans dérive au
+# changement d'heure.
+
+name: Collect ENTSO-E data (auction window)
+
+on:
+  schedule:
+    - cron: "0,30 12,13,14 * * *"
+    - cron: "0 15 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/collect
+        run: |
+          curl -sf -w "\nHTTP %{http_code}\n" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://meridian-power.vercel.app/api/cron/collect"
