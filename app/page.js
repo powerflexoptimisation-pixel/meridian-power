@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const MARKETS = [
-  { code: "DE", name: "Germany", zone: "DE-LU" },
-  { code: "FR", name: "France", zone: "FR" },
-  { code: "IT", name: "Italy", zone: "IT-North" },
-  { code: "ES", name: "Spain", zone: "ES" },
+  { code: "DE", name: "Germany", zone: "DE-LU", color: "#F2B84B" },
+  { code: "FR", name: "France", zone: "FR", color: "#3FA796" },
+  { code: "IT", name: "Italy", zone: "IT-North", color: "#8B6FC9" },
+  { code: "ES", name: "Spain", zone: "ES", color: "#4A94C4" },
 ];
+const MARKET_COLOR = Object.fromEntries(MARKETS.map((m) => [m.code, m.color]));
 
 const FUEL_COLORS = {
   "Solar": "#F2B84B", "Wind Onshore": "#3FA796", "Wind Offshore": "#2E7D74",
@@ -26,6 +27,15 @@ function fmtTime(ts) {
 }
 function fmtFullTime(ts) {
   return new Date(ts).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
+}
+function fmtDay(ts) {
+  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
+}
+function fmtDayFull(ts) {
+  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
 }
 function stats(prices) {
   if (!prices || prices.length === 0) return { avg: 0, min: 0, max: 0, last: 0, negCount: 0, spread: 0 };
@@ -104,6 +114,8 @@ function PriceChart({ market, prices }) {
 
 function GenerationMix({ market, generation }) {
   const gen = generation || [];
+  const [hidden, setHidden] = useState(() => new Set());
+
   const fuelKeys = useMemo(() => {
     const keys = new Set();
     gen.forEach((row) => Object.keys(row).forEach((k) => { if (k !== "timestamp") keys.add(k); }));
@@ -112,9 +124,16 @@ function GenerationMix({ market, generation }) {
     return Array.from(keys).sort((a, b) => totals[b] - totals[a]);
   }, [gen]);
 
+  // reset les filières masquées si le marché change et que la clé n'existe plus
+  useEffect(() => {
+    setHidden((prev) => new Set([...prev].filter((k) => fuelKeys.includes(k))));
+  }, [market.code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visibleKeys = fuelKeys.filter((k) => !hidden.has(k));
+
   const chartData = gen.map((row) => {
     const out = { time: fmtTime(row.timestamp) };
-    fuelKeys.forEach((k) => { out[k] = row[k] || 0; });
+    visibleKeys.forEach((k) => { out[k] = row[k] || 0; });
     return out;
   });
 
@@ -124,12 +143,20 @@ function GenerationMix({ market, generation }) {
   const renewables = ["Solar", "Wind Onshore", "Wind Offshore", "Hydro Run-of-river", "Hydro Water Reservoir", "Biomass", "Geothermal", "Other renewable", "Marine"];
   const renewShare = (fuelKeys.filter((k) => renewables.includes(k)).reduce((s, k) => s + totals[k], 0) / grandTotal) * 100;
 
+  function toggleFuel(k) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
+
   return (
     <div className="border border-[#2a2b28] bg-[#151614] p-5">
       <div className="flex items-baseline justify-between mb-4">
         <div>
           <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Actual Generation Mix</h3>
-          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; MW by production type</p>
+          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; MW by production type &middot; click legend to filter</p>
         </div>
         <div className="text-right font-mono"><div className="text-[10px] text-stone-600 uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
       </div>
@@ -139,82 +166,281 @@ function GenerationMix({ market, generation }) {
           <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
           <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
           <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "#8a8a86" }} />
-          {fuelKeys.slice(0, 8).map((k) => (
+          {visibleKeys.slice(0, 12).map((k) => (
             <Area key={k} type="monotone" dataKey={k} stackId="1" stroke={FUEL_COLORS[k] || "#888"} fill={FUEL_COLORS[k] || "#888"} fillOpacity={0.75} isAnimationActive={false} />
           ))}
         </AreaChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#2a2b28]">
-        {fuelKeys.slice(0, 8).map((k) => (
-          <div key={k} className="flex items-center gap-1.5 text-[10px] font-mono text-stone-500">
-            <span className="w-2 h-2 inline-block" style={{ background: FUEL_COLORS[k] || "#888" }} />
-            {k} &middot; {(totals[k] / 1000).toFixed(1)}GW avg
-          </div>
-        ))}
+        {fuelKeys.slice(0, 12).map((k) => {
+          const isHidden = hidden.has(k);
+          return (
+            <button
+              key={k}
+              onClick={() => toggleFuel(k)}
+              className={`flex items-center gap-1.5 text-[10px] font-mono transition-opacity ${isHidden ? "opacity-35" : "opacity-100"} text-stone-500 hover:text-stone-300`}
+              title={isHidden ? "Cliquer pour afficher" : "Cliquer pour masquer"}
+            >
+              <span className="w-2 h-2 inline-block" style={{ background: FUEL_COLORS[k] || "#888" }} />
+              {k} &middot; {(totals[k] / 1000).toFixed(1)}GW avg
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function fmtDay(ts) {
-  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
-}
+const QUICK_RANGES = [
+  { label: "7D", days: 7 },
+  { label: "30D", days: 30 },
+  { label: "90D", days: 90 },
+  { label: "1Y", days: 365 },
+];
 
 function HistoryChart({ market }) {
-  const [days, setDays] = useState(30);
-  const [history, setHistory] = useState(null);
+  const [selected, setSelected] = useState([market.code]);
+  const [quickDays, setQuickDays] = useState(30);
+  const [customFrom, setCustomFrom] = useState(null); // "YYYY-MM-DD" ou null (= mode rapide)
+  const [customTo, setCustomTo] = useState(null);
+  const [resolution, setResolution] = useState("day");
+  const [compareYoY, setCompareYoY] = useState(false);
+
+  const [data, setData] = useState(null);
+  const [yoyData, setYoyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Le marché actif (ticker sélectionné en haut) reste toujours inclus dans la comparaison.
+  useEffect(() => {
+    setSelected((prev) => (prev.includes(market.code) ? prev : [...prev, market.code]));
+  }, [market.code]);
+
+  const isCustom = !!(customFrom && customTo);
+
+  function computeRange(offsetYears = 0) {
+    if (isCustom) {
+      const f = new Date(customFrom);
+      const t = new Date(customTo);
+      f.setUTCFullYear(f.getUTCFullYear() - offsetYears);
+      t.setUTCFullYear(t.getUTCFullYear() - offsetYears);
+      return { from: isoDate(f), to: isoDate(t) };
+    }
+    return null; // mode "days" ne supporte pas le décalage YoY par date -> géré via param days côté API
+  }
+
+  const fetchKey = JSON.stringify({ selected, quickDays, customFrom, customTo, resolution });
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/history?country=${market.code}&days=${days}`)
+
+    const params = new URLSearchParams();
+    params.set("countries", selected.join(","));
+    params.set("resolution", resolution);
+    if (isCustom) {
+      params.set("from", customFrom);
+      params.set("to", customTo);
+    } else {
+      params.set("days", String(quickDays));
+    }
+
+    fetch(`/api/history?${params.toString()}`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
         if (json.error) setError(json.error);
-        else setHistory(json);
+        else setData(json);
       })
       .catch((e) => !cancelled && setError(String(e.message || e)))
       .finally(() => !cancelled && setLoading(false));
+
     return () => { cancelled = true; };
-  }, [market.code, days]);
+  }, [fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const chartData = (history?.daily || []).map((d) => ({
-    day: fmtDay(d.day),
-    avg: d.avg,
-    min: d.min,
-    max: d.max,
-  }));
+  // Comparaison année sur année: uniquement en mode 1 marché + dates custom.
+  useEffect(() => {
+    if (!compareYoY || selected.length !== 1 || !isCustom) { setYoyData(null); return; }
+    let cancelled = false;
+    const range = computeRange(1);
+    if (!range) return;
+    const params = new URLSearchParams();
+    params.set("countries", selected.join(","));
+    params.set("resolution", resolution);
+    params.set("from", range.from);
+    params.set("to", range.to);
+    fetch(`/api/history?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => !cancelled && !json.error && setYoyData(json))
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [compareYoY, fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const coverage = history?.coverage;
-  const hasData = coverage && coverage.n_points > 0;
+  function toggleMarket(code) {
+    setSelected((prev) => {
+      if (prev.includes(code)) {
+        if (prev.length === 1) return prev; // au moins un marché
+        return prev.filter((c) => c !== code);
+      }
+      return [...prev, code];
+    });
+  }
+
+  function pickQuick(days) {
+    setQuickDays(days);
+    setCustomFrom(null);
+    setCustomTo(null);
+  }
+
+  function applyCustomRange(from, to) {
+    if (from && to && from <= to) {
+      setCustomFrom(from);
+      setCustomTo(to);
+    }
+  }
+
+  // Fusionne les séries de chaque marché sélectionné par bucket, pour affichage multi-lignes.
+  const chartData = useMemo(() => {
+    if (!data?.markets) return [];
+    const byBucket = new Map();
+    for (const code of selected) {
+      const series = data.markets[code]?.series || [];
+      series.forEach((pt) => {
+        const key = pt.bucket || pt.day;
+        const label = resolution === "hour" ? fmtFullTime(key) : fmtDay(key);
+        const row = byBucket.get(key) || { key, label };
+        row[code] = pt.avg;
+        if (selected.length === 1) { row.min = pt.min; row.max = pt.max; }
+        byBucket.set(key, row);
+      });
+    }
+    let rows = [...byBucket.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+    if (compareYoY && yoyData?.markets && selected.length === 1) {
+      const code = selected[0];
+      const yoySeries = yoyData.markets[code]?.series || [];
+      rows = rows.map((row, i) => ({ ...row, ly: yoySeries[i]?.avg }));
+    }
+    return rows;
+  }, [data, yoyData, selected, resolution, compareYoY]);
+
+  const coverageList = selected
+    .map((c) => ({ code: c, coverage: data?.markets?.[c]?.coverage }))
+    .filter((x) => x.coverage && x.coverage.n_points > 0);
+  const hasData = coverageList.length > 0;
+
+  const exportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("countries", selected.join(","));
+    params.set("resolution", resolution);
+    if (isCustom) {
+      params.set("from", customFrom);
+      params.set("to", customTo);
+    } else {
+      params.set("days", String(quickDays));
+    }
+    return `/api/export?${params.toString()}`;
+  }, [selected, resolution, isCustom, customFrom, customTo, quickDays]);
+
+  const multiMode = selected.length > 1;
 
   return (
     <div className="border border-[#2a2b28] bg-[#151614] p-5 xl:col-span-2">
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Price History</h3>
           <p className="text-xs text-stone-600 mt-0.5">
-            {market.name} &middot; daily avg / min / max &middot;{" "}
-            {hasData
-              ? `${fmtDay(coverage.earliest)} → ${fmtDay(coverage.latest)} stored`
-              : "no data stored yet"}
+            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; {resolution === "hour" ? "hourly" : "daily"} avg{!multiMode ? " / min / max" : ""}
+            {hasData && (
+              <> &middot; {fmtDayFull(coverageList[0].coverage.earliest)} → {fmtDayFull(coverageList[0].coverage.latest)} stored</>
+            )}
           </p>
         </div>
-        <div className="flex gap-1">
-          {[7, 30, 90].map((d) => (
+        <a
+          href={exportUrl}
+          className="px-3 py-1.5 text-xs font-mono border border-[#2a2b28] text-stone-400 hover:border-amber-400 hover:text-amber-400 transition-colors"
+        >
+          ⬇ Export CSV
+        </a>
+      </div>
+
+      {/* Sélecteur de marchés (comparaison) */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-[10px] text-stone-600 uppercase tracking-wide font-mono mr-1">Compare:</span>
+        {MARKETS.map((m) => {
+          const isOn = selected.includes(m.code);
+          return (
             <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-3 py-1 text-xs font-mono border ${days === d ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+              key={m.code}
+              onClick={() => toggleMarket(m.code)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono border transition-colors"
+              style={{
+                borderColor: isOn ? m.color : "#2a2b28",
+                color: isOn ? m.color : "#6b6b68",
+                background: isOn ? `${m.color}14` : "transparent",
+              }}
             >
-              {d}D
+              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "#3a3b38" }} />
+              {m.zone}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Plage de dates + résolution */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#2a2b28]">
+        <div className="flex gap-1">
+          {QUICK_RANGES.map((r) => (
+            <button
+              key={r.label}
+              onClick={() => pickQuick(r.days)}
+              className={`px-3 py-1 text-xs font-mono border ${!isCustom && quickDays === r.days ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+            >
+              {r.label}
             </button>
           ))}
         </div>
+
+        <div className="flex items-center gap-1.5 text-xs font-mono">
+          <input
+            type="date"
+            defaultValue={customFrom || ""}
+            onChange={(e) => applyCustomRange(e.target.value, customTo || e.target.value)}
+            className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+          />
+          <span className="text-stone-600">→</span>
+          <input
+            type="date"
+            defaultValue={customTo || ""}
+            onChange={(e) => applyCustomRange(customFrom || e.target.value, e.target.value)}
+            className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+          />
+          {isCustom && (
+            <button onClick={() => { setCustomFrom(null); setCustomTo(null); }} className="text-stone-600 hover:text-stone-400 px-1" title="Revenir aux raccourcis">
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-1 ml-auto">
+          {["day", "hour"].map((r) => (
+            <button
+              key={r}
+              onClick={() => setResolution(r)}
+              className={`px-3 py-1 text-xs font-mono border uppercase ${resolution === r ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+            >
+              {r === "day" ? "Daily" : "Hourly"}
+            </button>
+          ))}
+        </div>
+
+        {!multiMode && isCustom && (
+          <label className="flex items-center gap-1.5 text-xs font-mono text-stone-500 cursor-pointer">
+            <input type="checkbox" checked={compareYoY} onChange={(e) => setCompareYoY(e.target.checked)} className="accent-amber-400" />
+            Compare vs. last year
+          </label>
+        )}
       </div>
 
       {error && (
@@ -227,22 +453,30 @@ function HistoryChart({ market }) {
 
       {!error && !loading && !hasData && (
         <div className="border border-[#2a2b28] text-stone-500 text-xs font-mono px-4 py-6 text-center">
-          Aucune donnée historique stockée pour ce marché. Lance un backfill :
-          <br />
-          <code className="text-amber-400">/api/admin/backfill?days={days}&country={market.code}</code>
+          Aucune donnée historique stockée pour cette sélection.
         </div>
       )}
 
       {hasData && (
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-            <XAxis dataKey="day" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={Math.floor(chartData.length / 10)} />
+            <XAxis dataKey="label" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 10))} />
             <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
             <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "#8a8a86" }} />
-            <Line type="monotone" dataKey="max" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
-            <Line type="monotone" dataKey="avg" stroke="#F2B84B" strokeWidth={2} dot={false} isAnimationActive={false} />
-            <Line type="monotone" dataKey="min" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+            <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+            {!multiMode && (
+              <>
+                <Line type="monotone" dataKey="max" name="max" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+                <Line type="monotone" dataKey="min" name="min" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+              </>
+            )}
+            {selected.map((code) => (
+              <Line key={code} type="monotone" dataKey={code} name={`${code} avg`} stroke={MARKET_COLOR[code]} strokeWidth={2} dot={false} isAnimationActive={false} />
+            ))}
+            {compareYoY && !multiMode && (
+              <Line type="monotone" dataKey="ly" name="avg (last year)" stroke="#8a8a86" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       )}
