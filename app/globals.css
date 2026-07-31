@@ -4,6 +4,53 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
+/* Palette Meridian Power — variables partagées entre thème sombre et clair.
+   Le thème par défaut (dark) reproduit exactement les couleurs d'origine,
+   donc aucun changement visuel pour les utilisateurs existants. */
+:root,
+[data-theme="dark"] {
+  --mp-bg: #101110;
+  --mp-panel: #151614;
+  --mp-panel-alt: #191a17;
+  --mp-panel-active: #20211f;
+  --mp-bg-deep: #0f100e;
+  --mp-border: #2a2b28;
+  --mp-border-hover: #3a3b38;
+  --mp-text-1: #f5f5f4;
+  --mp-text-2: #e7e5e4;
+  --mp-text-3: #d6d3d1;
+  --mp-text-4: #a8a29e;
+  --mp-text-5: #78716c;
+  --mp-text-6: #57534e;
+  --mp-grid: #2a2b28;
+  --mp-tick: #6b6b68;
+  --mp-tooltip-bg: #0f100e;
+  --mp-tooltip-border: #3a3b38;
+  --mp-tooltip-label: #8a8a86;
+}
+
+[data-theme="light"] {
+  --mp-bg: #f7f6f2;
+  --mp-panel: #ffffff;
+  --mp-panel-alt: #f1efe8;
+  --mp-panel-active: #fff6e6;
+  --mp-bg-deep: #ffffff;
+  --mp-border: #ddd8cc;
+  --mp-border-hover: #c5bfae;
+  --mp-text-1: #1c1a16;
+  --mp-text-2: #2e2b25;
+  --mp-text-3: #464137;
+  --mp-text-4: #6b6558;
+  --mp-text-5: #8a8474;
+  --mp-text-6: #a39c8a;
+  --mp-grid: #e6e1d6;
+  --mp-tick: #9a9382;
+  --mp-tooltip-bg: #ffffff;
+  --mp-tooltip-border: #ddd8cc;
+  --mp-tooltip-label: #6b6558;
+}
+
 body {
-  background: #101110;
+  background: var(--mp-bg);
+  transition: background-color 0.15s ease;
 }
