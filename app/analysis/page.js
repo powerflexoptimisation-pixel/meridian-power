@@ -12,8 +12,45 @@ const MARKETS = [
   { code: "ES", name: "Spain", zone: "ES", color: "#4A94C4" },
 ];
 
+const WIND_PV = ["Solar", "Wind Onshore", "Wind Offshore"];
+const OTHER_RENEWABLES = [
+  "Hydro Run-of-river", "Hydro Water Reservoir", "Hydro Pumped Storage",
+  "Biomass", "Geothermal", "Other renewable", "Marine",
+];
+
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+}
+
+// Fusionne load (consommation) + generation (mix) live en la même forme que
+// /api/analysis, pour réutiliser exactement la même logique d'affichage.
+function deriveLiveSeries(loadPoints, genPoints) {
+  const genByTs = new Map((genPoints || []).map((row) => [row.timestamp, row]));
+  return (loadPoints || []).map((lp) => {
+    const gen = genByTs.get(lp.timestamp) || {};
+    const windPv = WIND_PV.reduce((s, k) => s + (gen[k] || 0), 0);
+    const otherRenew = OTHER_RENEWABLES.reduce((s, k) => s + (gen[k] || 0), 0);
+    return {
+      timestamp: lp.timestamp,
+      consumption: lp.load_mw,
+      windPv,
+      otherRenew,
+      residualLoad: lp.load_mw - windPv,
+    };
+  });
+}
+
+// Renvoie le point dont le créneau 15-min contient l'instant présent — le
+// même principe que sur la homepage pour les tickers de prix.
+function currentPoint(series) {
+  if (!series || series.length === 0) return null;
+  const now = Date.now();
+  let candidate = series[0];
+  for (const p of series) {
+    if (new Date(p.timestamp).getTime() <= now) candidate = p;
+    else break;
+  }
+  return candidate;
 }
 
 function seriesStats(series, key) {
@@ -26,16 +63,25 @@ function seriesStats(series, key) {
   };
 }
 
-function StatCard({ label, unit, color, stats }) {
+function StatCard({ label, color, stats, current, isLive }) {
   return (
     <div className="border border-[#2a2b28] bg-[#151614] px-4 py-3">
       <div className="flex items-center gap-2 mb-1">
         <span className="w-2 h-2 inline-block rounded-full" style={{ background: color }} />
         <span className="text-[11px] tracking-[0.1em] text-stone-400 font-mono uppercase">{label}</span>
       </div>
-      <div className="text-xl font-mono font-semibold text-stone-100">
-        {(stats.avg / 1000).toFixed(2)} <span className="text-xs text-stone-500">GW avg</span>
-      </div>
+      {isLive ? (
+        <>
+          <div className="text-xl font-mono font-semibold text-stone-100">
+            {(current.value / 1000).toFixed(2)} <span className="text-xs text-stone-500">GW</span>
+          </div>
+          <div className="text-[10px] text-stone-600 font-mono mt-0.5">now &middot; {current.time}</div>
+        </>
+      ) : (
+        <div className="text-xl font-mono font-semibold text-stone-100">
+          {(stats.avg / 1000).toFixed(2)} <span className="text-xs text-stone-500">GW avg</span>
+        </div>
+      )}
       <div className="flex gap-4 mt-1 text-[10px] font-mono text-stone-500">
         <span>L {(stats.min / 1000).toFixed(1)}</span>
         <span>H {(stats.max / 1000).toFixed(1)}</span>
@@ -46,50 +92,85 @@ function StatCard({ label, unit, color, stats }) {
 
 export default function AnalysisPage() {
   const [activeMarket, setActiveMarket] = useState("DE");
-  const [fromDate, setFromDate] = useState(() => berlinYesterdayISO());
-  const [toDate, setToDate] = useState(() => berlinYesterdayISO());
-  const [data, setData] = useState(null);
+  const [viewDate, setViewDate] = useState(null); // null = live
+  const [liveByMarket, setLiveByMarket] = useState({});
+  const [histData, setHistData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const isLive = !viewDate;
+
+  // Mode live: /api/entsoe (même source que la homepage), rafraîchi toutes les 15 min.
   useEffect(() => {
+    if (!isLive) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/entsoe?country=${activeMarket}`);
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+        if (!cancelled) setLiveByMarket((prev) => ({ ...prev, [activeMarket]: json }));
+      } catch (e) {
+        if (!cancelled) setError(String(e.message || e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 15 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [activeMarket, isLive]);
+
+  // Mode historique: /api/analysis pour un jour précis (en base).
+  useEffect(() => {
+    if (isLive) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ country: activeMarket, from: fromDate, to: toDate });
+    const params = new URLSearchParams({ country: activeMarket, from: viewDate, to: viewDate });
     fetch(`/api/analysis?${params.toString()}`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
         if (json.error) setError(json.error);
-        else setData(json);
+        else setHistData(json);
       })
       .catch((e) => !cancelled && setError(String(e.message || e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [activeMarket, fromDate, toDate]);
+  }, [activeMarket, viewDate, isLive]);
 
   const market = MARKETS.find((m) => m.code === activeMarket);
-  const series = data?.series || [];
+
+  const series = useMemo(() => {
+    if (isLive) {
+      const d = liveByMarket[activeMarket];
+      if (!d) return [];
+      return deriveLiveSeries(d.load, d.generation);
+    }
+    return histData?.series || [];
+  }, [isLive, liveByMarket, activeMarket, histData]);
 
   const chartData = useMemo(
     () => series.map((r) => ({ time: fmtTime(r.timestamp), consumption: r.consumption, windPv: r.windPv, otherRenew: r.otherRenew, residualLoad: r.residualLoad })),
     [series]
   );
 
+  const cur = currentPoint(series);
+  const curVals = {
+    consumption: { value: cur ? cur.consumption : 0, time: cur ? fmtTime(cur.timestamp) : "" },
+    windPv: { value: cur ? cur.windPv : 0, time: cur ? fmtTime(cur.timestamp) : "" },
+    otherRenew: { value: cur ? cur.otherRenew : 0, time: cur ? fmtTime(cur.timestamp) : "" },
+    residualLoad: { value: cur ? cur.residualLoad : 0, time: cur ? fmtTime(cur.timestamp) : "" },
+  };
+
   const cStats = seriesStats(series, "consumption");
   const wStats = seriesStats(series, "windPv");
   const oStats = seriesStats(series, "otherRenew");
   const rStats = seriesStats(series, "residualLoad");
   const renewShareOfLoad = cStats.avg > 0 ? ((wStats.avg + oStats.avg) / cStats.avg) * 100 : 0;
-
-  function setQuickDay(offsetDays) {
-    const d = new Date(berlinYesterdayISO() + "T12:00:00Z");
-    d.setUTCDate(d.getUTCDate() - offsetDays);
-    const iso = d.toISOString().slice(0, 10);
-    setFromDate(iso);
-    setToDate(iso);
-  }
 
   return (
     <div className="min-h-screen bg-[#101110] text-stone-200" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -104,7 +185,7 @@ export default function AnalysisPage() {
         </div>
         <div className="flex items-center gap-2 text-[11px] font-mono text-stone-500">
           <span className={`w-1.5 h-1.5 rounded-full inline-block ${loading ? "bg-amber-400 animate-pulse" : "bg-teal-400"}`} />
-          {loading ? "Loading..." : "Source: ENTSO-E Transparency Platform"}
+          {loading ? "Loading..." : isLive ? "Live · refreshes every 15 min" : "Historical view"}
         </div>
       </header>
 
@@ -125,15 +206,19 @@ export default function AnalysisPage() {
           );
         })}
 
-        <div className="flex gap-1 ml-2">
-          <button onClick={() => setQuickDay(0)} className="px-3 py-1 text-xs font-mono border border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]">Yesterday</button>
-          <button onClick={() => setQuickDay(7)} className="px-3 py-1 text-xs font-mono border border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]">-7d</button>
-        </div>
-
         <div className="flex items-center gap-1.5 text-xs font-mono ml-2">
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400" />
-          <span className="text-stone-600">→</span>
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400" />
+          <input
+            type="date"
+            value={viewDate || ""}
+            max={berlinYesterdayISO()}
+            onChange={(e) => setViewDate(e.target.value || null)}
+            className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+          />
+          {!isLive && (
+            <button onClick={() => setViewDate(null)} className="px-2 py-1 border border-[#2a2b28] text-stone-500 hover:border-amber-400 hover:text-amber-400">
+              ● LIVE
+            </button>
+          )}
         </div>
       </div>
 
@@ -143,17 +228,19 @@ export default function AnalysisPage() {
 
       <main className="px-6 pb-8 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Consumption" color="#E8C468" stats={cStats} />
-          <StatCard label="Wind + PV" color="#3FA796" stats={wStats} />
-          <StatCard label="Other renewables" color="#7A9B4E" stats={oStats} />
-          <StatCard label="Residual load" color="#C4622D" stats={rStats} />
+          <StatCard label="Consumption" color="#E8C468" stats={cStats} current={curVals.consumption} isLive={isLive} />
+          <StatCard label="Wind + PV" color="#3FA796" stats={wStats} current={curVals.windPv} isLive={isLive} />
+          <StatCard label="Other renewables" color="#7A9B4E" stats={oStats} current={curVals.otherRenew} isLive={isLive} />
+          <StatCard label="Residual load" color="#C4622D" stats={rStats} current={curVals.residualLoad} isLive={isLive} />
         </div>
 
         <div className="border border-[#2a2b28] bg-[#151614] p-5">
           <div className="flex items-baseline justify-between mb-4">
             <div>
               <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Load vs. Wind+PV vs. Residual Load</h3>
-              <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; {fromDate === toDate ? fromDate : `${fromDate} → ${toDate}`} &middot; renewables (wind+PV+other) cover {renewShareOfLoad.toFixed(1)}% of avg load</p>
+              <p className="text-xs text-stone-600 mt-0.5">
+                {market.name} &middot; {isLive ? "today (live)" : viewDate} &middot; renewables cover {renewShareOfLoad.toFixed(1)}% of avg load
+              </p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={320}>
@@ -218,13 +305,13 @@ export default function AnalysisPage() {
 
         {!loading && !error && series.length === 0 && (
           <div className="border border-[#2a2b28] text-stone-500 text-xs font-mono px-4 py-6 text-center">
-            Aucune donnée pour cette sélection. La consommation (load) est une donnée nouvellement collectée — les jours antérieurs à sa mise en place n'ont pas encore d'historique.
+            Aucune donnée pour cette sélection.
           </div>
         )}
       </main>
 
       <footer className="px-6 py-4 border-t border-[#2a2b28] text-[10px] font-mono text-stone-600">
-        Residual load = Consumption − (Wind + PV). Max range: 7 days (15-min resolution).
+        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data.
       </footer>
     </div>
   );
