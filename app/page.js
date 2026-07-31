@@ -357,6 +357,9 @@ function GenerationMix({ market, dataByMarket }) {
   const chartData = gen.map((row) => {
     const out = { time: fmtTime(row.timestamp) };
     visibleKeys.forEach((k) => { out[k] = row[k] || 0; });
+    // Total réel toutes filières confondues (indépendant du filtre de légende),
+    // pour toujours voir la somme nette finale même si certaines filières sont masquées.
+    out.total = fuelKeys.reduce((sum, k) => sum + (row[k] || 0), 0);
     return out;
   });
 
@@ -400,6 +403,7 @@ function GenerationMix({ market, dataByMarket }) {
           {visibleKeys.slice(0, 12).map((k) => (
             <Area key={k} type="monotone" dataKey={k} stackId="1" stroke={FUEL_COLORS[k] || "#888"} fill={FUEL_COLORS[k] || "#888"} fillOpacity={0.75} isAnimationActive={false} />
           ))}
+          <Line type="monotone" dataKey="total" name="Total (all sources)" stroke="var(--mp-text-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
         </AreaChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[var(--mp-border)]">
