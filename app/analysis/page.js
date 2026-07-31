@@ -155,9 +155,11 @@ export default function AnalysisPage() {
   }, [isLive, liveByMarket, activeMarket, histData]);
 
   const chartData = useMemo(
-    () => series.map((r) => ({ time: fmtTime(r.timestamp), consumption: r.consumption, windPv: r.windPv, otherRenew: r.otherRenew, residualLoad: r.residualLoad })),
+    () => series.map((r) => ({ time: fmtTime(r.timestamp), consumption: r.consumption, consumptionForecast: r.consumptionForecast ?? undefined, windPv: r.windPv, otherRenew: r.otherRenew, residualLoad: r.residualLoad })),
     [series]
   );
+  const hasForecast = !isLive && chartData.some((r) => r.consumptionForecast !== undefined);
+  const forecastAccuracy = !isLive ? histData?.forecastAccuracy : null;
 
   const cur = currentPoint(series);
   const curVals = {
@@ -244,6 +246,16 @@ export default function AnalysisPage() {
                 {market.name} &middot; {isLive ? "today (live)" : viewDate} &middot; renewables cover {renewShareOfLoad.toFixed(1)}% of avg load
               </p>
             </div>
+            {forecastAccuracy && forecastAccuracy.n_points > 0 && (
+              <div className="text-right font-mono">
+                <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Forecast error (day-ahead)</div>
+                <div className="text-sm text-[var(--mp-text-2)]">
+                  {forecastAccuracy.mape_pct.toFixed(1)}% <span className="text-[var(--mp-text-6)] text-xs">MAPE</span>
+                  <span className="mx-1 text-[var(--mp-text-6)]">&middot;</span>
+                  {(forecastAccuracy.mae_mw / 1000).toFixed(2)}GW <span className="text-[var(--mp-text-6)] text-xs">MAE</span>
+                </div>
+              </div>
+            )}
           </div>
           <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
@@ -260,6 +272,9 @@ export default function AnalysisPage() {
               <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
               <Area type="monotone" dataKey="windPv" name="Wind + PV" stroke="#3FA796" fill="url(#windPvGrad)" strokeWidth={1.5} isAnimationActive={false} />
               <Line type="monotone" dataKey="consumption" name="Consumption" stroke="#E8C468" strokeWidth={2} dot={false} isAnimationActive={false} />
+              {hasForecast && (
+                <Line type="monotone" dataKey="consumptionForecast" name="Consumption (forecast)" stroke="#8a8a86" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />
+              )}
               <Line type="monotone" dataKey="residualLoad" name="Residual load" stroke="#C4622D" strokeWidth={2} dot={false} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -313,7 +328,7 @@ export default function AnalysisPage() {
       </main>
 
       <footer className="px-6 py-4 border-t border-[var(--mp-border)] text-[10px] font-mono text-[var(--mp-text-6)]">
-        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data.
+        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data. Day-ahead forecast comparison available in historical view.
       </footer>
     </div>
   );
