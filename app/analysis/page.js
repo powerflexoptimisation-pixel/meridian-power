@@ -19,6 +19,8 @@ const OTHER_RENEWABLES = [
   "Biomass", "Geothermal", "Other renewable", "Marine",
 ];
 
+const NEIGHBOR_COLORS = { DE: "#F2B84B", FR: "#3FA796", IT: "#8B6FC9", ES: "#4A94C4" };
+
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
@@ -96,6 +98,7 @@ export default function AnalysisPage() {
   const [viewDate, setViewDate] = useState(null); // null = live
   const [liveByMarket, setLiveByMarket] = useState({});
   const [histData, setHistData] = useState(null);
+  const [flowsData, setFlowsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -145,6 +148,24 @@ export default function AnalysisPage() {
 
   const market = MARKETS.find((m) => m.code === activeMarket);
 
+  // Flux transfrontaliers physiques — même endpoint pour live (hier->auj.)
+  // et historique (date précise), l'API gère les deux via from/to.
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({ country: activeMarket });
+    if (!isLive) {
+      params.set("from", viewDate);
+      params.set("to", viewDate);
+    }
+    fetch(`/api/flows?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (!cancelled && !json.error) setFlowsData(json);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeMarket, viewDate, isLive]);
+
   const series = useMemo(() => {
     if (isLive) {
       const d = liveByMarket[activeMarket];
@@ -174,6 +195,27 @@ export default function AnalysisPage() {
   const oStats = seriesStats(series, "otherRenew");
   const rStats = seriesStats(series, "residualLoad");
   const renewShareOfLoad = cStats.avg > 0 ? ((wStats.avg + oStats.avg) / cStats.avg) * 100 : 0;
+
+  const neighbors = flowsData?.neighbors || [];
+  const flowsChartData = useMemo(() => {
+    if (!flowsData?.flows) return [];
+    const byTs = new Map();
+    for (const n of neighbors) {
+      (flowsData.flows[n] || []).forEach((p) => {
+        const row = byTs.get(p.timestamp) || { key: p.timestamp, time: fmtTime(p.timestamp) };
+        row[n] = p.net_mw;
+        byTs.set(p.timestamp, row);
+      });
+    }
+    return [...byTs.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+  }, [flowsData, neighbors]);
+  const flowAvgByNeighbor = Object.fromEntries(
+    neighbors.map((n) => {
+      const vals = (flowsData?.flows?.[n] || []).map((p) => p.net_mw);
+      const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      return [n, avg];
+    })
+  );
 
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -319,6 +361,41 @@ export default function AnalysisPage() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {neighbors.length > 0 && (
+          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+            <div className="flex items-baseline justify-between mb-4">
+              <div>
+                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Cross-Border Physical Flows</h3>
+                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
+                  {market.name} vs. {neighbors.join(", ")} &middot; positive = net export from {market.zone}, negative = net import
+                </p>
+              </div>
+              <div className="flex gap-4 text-right font-mono">
+                {neighbors.map((n) => (
+                  <div key={n}>
+                    <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">{n} avg</div>
+                    <div className="text-sm" style={{ color: flowAvgByNeighbor[n] >= 0 ? "#3FA796" : "#C4622D" }}>
+                      {flowAvgByNeighbor[n] >= 0 ? "+" : ""}{(flowAvgByNeighbor[n] / 1000).toFixed(2)}GW
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={flowsChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(flowsChartData.length / 10))} />
+                <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+                {neighbors.map((n) => (
+                  <Line key={n} type="monotone" dataKey={n} name={`→ ${n}`} stroke={NEIGHBOR_COLORS[n] || "#888"} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {!loading && !error && series.length === 0 && (
           <div className="border border-[var(--mp-border)] text-[var(--mp-text-5)] text-xs font-mono px-4 py-6 text-center">
