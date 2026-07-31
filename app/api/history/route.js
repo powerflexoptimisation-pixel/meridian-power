@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { DOMAINS } from "../../../lib/entsoe";
 import { getDailyPriceStats, getDataCoverage } from "../../../lib/db";
+import { berlinMidnightUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,9 +23,9 @@ export async function GET(request) {
     );
   }
 
-  const now = new Date();
-  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const from = new Date(to.getTime() - days * 24 * 3600 * 1000);
+  // Journée de marché en heure de Berlin (CET/CEST), pas en UTC.
+  const to = berlinMidnightUTC(0);
+  const from = berlinMidnightUTC(days);
 
   try {
     const coverage = await getDataCoverage(country);
