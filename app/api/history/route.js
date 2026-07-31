@@ -1,4 +1,7 @@
 // app/api/history/route.js
+// Usage: /api/history?country=DE&days=30
+// Retourne: stats quotidiennes de prix (avg/min/max) + couverture des données.
+
 import { NextResponse } from "next/server";
 import { DOMAINS } from "../../../lib/entsoe";
 import { getDailyPriceStats, getDataCoverage } from "../../../lib/db";
@@ -34,14 +37,8 @@ export async function GET(request) {
         latest: coverage.latest,
         n_points: Number(coverage.n),
       },
-      _debug: {
-        now: now.toISOString(),
-        from: from.toISOString(),
-        to: to.toISOString(),
-        raw_coverage: coverage,
-      },
     });
   } catch (err) {
-    return NextResponse.json({ error: String(err.message || err), stack: err.stack }, { status: 502 });
+    return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
   }
 }
