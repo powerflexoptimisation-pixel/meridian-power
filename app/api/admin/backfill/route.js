@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { collectCountryForRange, DOMAINS } from "../../../../lib/entsoe";
-import { upsertPrices, upsertGeneration, logCollection } from "../../../../lib/db";
+import { upsertPrices, upsertGeneration, upsertLoad, logCollection } from "../../../../lib/db";
 import { berlinMidnightUTC } from "../../../../lib/tz";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +50,7 @@ export async function GET(request) {
         const data = await collectCountryForRange(country, periodStart, periodEnd);
         const nPrices = await upsertPrices(country, data.prices);
         const nGen = await upsertGeneration(country, data.generation);
+        await upsertLoad(country, data.load);
         await logCollection(country, nPrices, nGen, data.warnings);
         if (nPrices > 0) daysStored++;
         else daysFailed++;
