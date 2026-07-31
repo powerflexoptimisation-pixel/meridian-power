@@ -1,43 +1,41 @@
-// app/api/debug/route.js — TEMPORAIRE, test OAuth netztransparenz.de
+// app/api/debug/route.js — TEMPORAIRE
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+async function getToken() {
+  const tokenRes = await fetch("https://identity.netztransparenz.de/users/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: process.env.NETZTRANSPARENZ_CLIENT_ID,
+      client_secret: process.env.NETZTRANSPARENZ_CLIENT_SECRET,
+    }),
+  });
+  const json = await tokenRes.json();
+  return json.access_token;
+}
+
 export async function GET() {
-  const clientId = process.env.NETZTRANSPARENZ_CLIENT_ID;
-  const clientSecret = process.env.NETZTRANSPARENZ_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    return NextResponse.json({ error: "Credentials manquants dans l'env" }, { status: 500 });
-  }
-
   try {
-    const tokenRes = await fetch("https://identity.netztransparenz.de/users/connect/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
-      }),
-    });
-    const tokenText = await tokenRes.text();
-    let tokenJson;
-    try { tokenJson = JSON.parse(tokenText); } catch { tokenJson = null; }
-
-    const result = { token_status: tokenRes.status, token_body_preview: tokenText.slice(0, 300) };
-
-    if (tokenJson?.access_token) {
-      const healthRes = await fetch("https://ds.netztransparenz.de/api/v1/health", {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-      });
-      result.health_status = healthRes.status;
-      result.health_body = (await healthRes.text()).slice(0, 300);
-      result.token_expires_in = tokenJson.expires_in;
-      result.token_type = tokenJson.token_type;
+    const token = await getToken();
+    const candidates = [
+      "https://ds.netztransparenz.de/swagger/v1/swagger.json",
+      "https://ds.netztransparenz.de/api/v1/swagger.json",
+      "https://ds.netztransparenz.de/swagger/index.html",
+    ];
+    const results = {};
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const text = await res.text();
+        results[url] = { status: res.status, preview: text.slice(0, 2000) };
+      } catch (e) {
+        results[url] = { error: String(e.message || e) };
+      }
     }
-
-    return NextResponse.json(result);
+    return NextResponse.json(results);
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
   }
