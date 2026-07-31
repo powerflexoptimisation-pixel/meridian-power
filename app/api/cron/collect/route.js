@@ -1,7 +1,7 @@
 // app/api/cron/collect/route.js
 import { NextResponse } from "next/server";
 import { collectCountry, DOMAINS } from "../../../../lib/entsoe";
-import { upsertPrices, upsertGeneration, logCollection } from "../../../../lib/db";
+import { upsertPrices, upsertGeneration, upsertLoad, logCollection } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,8 +17,9 @@ async function collectOne(country) {
   const data = await collectCountry(country);
   const nPrices = await upsertPrices(country, data.prices);
   const nGen = await upsertGeneration(country, data.generation);
+  const nLoad = await upsertLoad(country, data.load);
   await logCollection(country, nPrices, nGen, data.warnings);
-  return { prices_stored: nPrices, generation_rows_stored: nGen, warnings: data.warnings };
+  return { prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad, warnings: data.warnings };
 }
 
 export async function GET(request) {
