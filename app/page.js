@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const MARKETS = [
@@ -703,6 +704,10 @@ export default function MeridianPower() {
         <div className="flex items-baseline gap-3">
           <h1 className="text-xl font-semibold tracking-tight text-stone-100">Meridian Power</h1>
           <span className="text-[11px] font-mono text-stone-600 tracking-[0.15em] uppercase">European Wholesale Markets</span>
+          <nav className="flex items-center gap-1 ml-4">
+            <span className="px-2 py-1 text-xs font-mono border border-amber-400 text-amber-400">Home</span>
+            <Link href="/analysis" className="px-2 py-1 text-xs font-mono border border-[#2a2b28] text-stone-500 hover:border-[#3a3b38] hover:text-stone-300">Analysis</Link>
+          </nav>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-mono text-stone-500">
           <span className={`w-1.5 h-1.5 rounded-full inline-block ${loading ? "bg-amber-400 animate-pulse" : "bg-teal-400"}`} />
