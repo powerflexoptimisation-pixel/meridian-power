@@ -23,15 +23,17 @@ export async function GET() {
     const dateFrom = "2026-07-29T00:00:00";
     const dateTo = "2026-07-30T00:00:00";
     const paths = [
-      `https://ds.netztransparenz.de/api/v1/data/NrvSaldo/reBAP/Qualitaetsgesichert?dateFrom=${dateFrom}&dateTo=${dateTo}`,
-      `https://ds.netztransparenz.de/api/v1/data/redispatch?dateFrom=${dateFrom}&dateTo=${dateTo}`,
-      `https://ds.netztransparenz.de/api/v1/data/NrvSaldo/RZSaldo/Qualitaetsgesichert?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      `https://ds.netztransparenz.de/api/v1/data/nrvsaldo/reBAP/Qualitaetsgesichert?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      `https://ds.netztransparenz.de/api/v1/data/nrvsaldo/RZSaldo/Qualitaetsgesichert?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      `https://ds.netztransparenz.de/api/v1/data/redispatch?dateFrom=2026-07-01T00:00:00&dateTo=2026-07-05T00:00:00`,
+      `https://ds.netztransparenz.de/api/v1/data/Spotmarktpreise?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      `https://ds.netztransparenz.de/api/v1/data/TrafficLight`,
     ];
     const results = {};
     for (const url of paths) {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const text = await res.text();
-      results[url] = { status: res.status, contentType: res.headers.get("content-type"), preview: text.slice(0, 800) };
+      results[url] = { status: res.status, contentType: res.headers.get("content-type"), preview: text.slice(0, 600) };
     }
     return NextResponse.json(results);
   } catch (err) {
