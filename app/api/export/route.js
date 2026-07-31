@@ -10,8 +10,16 @@ import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
 
+function toIso(v) {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "string") {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return v;
+}
+
 function csvEscape(v) {
-  if (v instanceof Date) v = v.toISOString();
   const s = String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
@@ -51,13 +59,13 @@ export async function GET(request) {
       rows.push(["country", "timestamp_utc", "price_eur_mwh"]);
       for (const c of countries) {
         const points = await getPriceHistory(c, from.toISOString(), to.toISOString());
-        for (const p of points) rows.push([c, p.timestamp, p.price_eur_mwh]);
+        for (const p of points) rows.push([c, toIso(p.timestamp), p.price_eur_mwh]);
       }
     } else {
       rows.push(["country", "period_start", `avg_eur_mwh`, "min_eur_mwh", "max_eur_mwh"]);
       for (const c of countries) {
         const series = await getPriceStatsBucketed(c, from.toISOString(), to.toISOString(), resolution);
-        for (const s of series) rows.push([c, s.bucket, s.avg.toFixed(2), s.min.toFixed(2), s.max.toFixed(2)]);
+        for (const s of series) rows.push([c, toIso(s.bucket), s.avg.toFixed(2), s.min.toFixed(2), s.max.toFixed(2)]);
       }
     }
 
