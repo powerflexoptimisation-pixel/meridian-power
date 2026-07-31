@@ -19,7 +19,12 @@ const OTHER_RENEWABLES = [
   "Biomass", "Geothermal", "Other renewable", "Marine",
 ];
 
-const NEIGHBOR_COLORS = { DE: "#F2B84B", FR: "#3FA796", IT: "#8B6FC9", ES: "#4A94C4" };
+const NEIGHBOR_COLORS = {
+  DE: "#F2B84B", FR: "#3FA796", IT: "#8B6FC9", ES: "#4A94C4",
+  AT: "#C4622D", CH: "#E85C5C", NL: "#5FA88F", BE: "#B8860B",
+  DK1: "#7A9B4E", DK2: "#4E7A9B", CZ: "#9B7A4E", PL: "#A05C9B",
+  SI: "#5C9BA0", PT: "#D4A24C",
+};
 
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
@@ -364,25 +369,24 @@ export default function AnalysisPage() {
 
         {neighbors.length > 0 && (
           <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-            <div className="flex items-baseline justify-between mb-4">
-              <div>
-                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Cross-Border Physical Flows</h3>
-                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
-                  {market.name} vs. {neighbors.join(", ")} &middot; positive = net export from {market.zone}, negative = net import
-                </p>
-              </div>
-              <div className="flex gap-4 text-right font-mono">
-                {neighbors.map((n) => (
-                  <div key={n}>
-                    <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">{n} avg</div>
-                    <div className="text-sm" style={{ color: flowAvgByNeighbor[n] >= 0 ? "#3FA796" : "#C4622D" }}>
-                      {flowAvgByNeighbor[n] >= 0 ? "+" : ""}{(flowAvgByNeighbor[n] / 1000).toFixed(2)}GW
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="mb-4">
+              <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Cross-Border Physical Flows</h3>
+              <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
+                {market.name} &middot; all {neighbors.length} border{neighbors.length > 1 ? "s" : ""} &middot; positive = net export from {market.zone}, negative = net import
+              </p>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
+            <div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-[var(--mp-border)]">
+              {neighbors.map((n) => (
+                <div key={n} className="flex items-center gap-1.5 font-mono">
+                  <span className="w-2 h-2 inline-block rounded-full" style={{ background: NEIGHBOR_COLORS[n] || "#888" }} />
+                  <span className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">{n}</span>
+                  <span className="text-xs" style={{ color: flowAvgByNeighbor[n] >= 0 ? "#3FA796" : "#C4622D" }}>
+                    {flowAvgByNeighbor[n] >= 0 ? "+" : ""}{(flowAvgByNeighbor[n] / 1000).toFixed(2)}GW
+                  </span>
+                </div>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
               <LineChart data={flowsChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                 <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(flowsChartData.length / 10))} />
