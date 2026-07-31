@@ -76,45 +76,198 @@ function TickerCard({ market, prices, isActive, onClick }) {
   );
 }
 
-function PriceChart({ market, prices }) {
-  const chartData = (prices || []).map((p) => ({ time: fmtTime(p.timestamp), fullTime: fmtFullTime(p.timestamp), price: p.price_eur_mwh }));
-  const s = stats(prices);
+function DateJumpControls({ viewDate, setViewDate, maxRangeDays = 1 }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs font-mono">
+      <input
+        type="date"
+        value={viewDate || ""}
+        onChange={(e) => setViewDate(e.target.value || null)}
+        className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+      />
+      {viewDate && (
+        <button onClick={() => setViewDate(null)} className="px-2 py-1 border border-[#2a2b28] text-stone-500 hover:border-amber-400 hover:text-amber-400" title="Revenir au live">
+          ● LIVE
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PriceChart({ market, dataByMarket }) {
+  const [selected, setSelected] = useState([market.code]);
+  const [viewDate, setViewDate] = useState(null); // null = live (dernier jour dispo), "YYYY-MM-DD" = jour historique précis
+  const [historicalData, setHistoricalData] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setSelected((prev) => (prev.includes(market.code) ? prev : [...prev, market.code]));
+  }, [market.code]);
+
+  // Mode historique: on va chercher les points bruts 15-min stockés en base pour la date choisie.
+  useEffect(() => {
+    if (!viewDate) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams();
+    params.set("countries", selected.join(","));
+    params.set("resolution", "raw");
+    params.set("from", viewDate);
+    params.set("to", viewDate);
+    fetch(`/api/history?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.error) { setError(json.error); return; }
+        const out = {};
+        for (const code of selected) {
+          out[code] = (json.markets[code]?.series || []).map((pt) => ({ timestamp: pt.bucket, price_eur_mwh: pt.avg }));
+        }
+        setHistoricalData(out);
+      })
+      .catch((e) => !cancelled && setError(String(e.message || e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [viewDate, selected.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleMarket(code) {
+    setSelected((prev) => {
+      if (prev.includes(code)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((c) => c !== code);
+      }
+      return [...prev, code];
+    });
+  }
+
+  // source des prix par marché: live (props du parent, déjà pollé) ou historique (fetch local)
+  const pricesByCode = viewDate
+    ? historicalData
+    : Object.fromEntries(selected.map((c) => [c, dataByMarket[c]?.prices || []]));
+
+  const multiMode = selected.length > 1;
+  const primaryPrices = pricesByCode[market.code] || pricesByCode[selected[0]] || [];
+  const s = stats(primaryPrices);
+
+  const chartData = useMemo(() => {
+    const byTs = new Map();
+    for (const code of selected) {
+      (pricesByCode[code] || []).forEach((p) => {
+        const row = byTs.get(p.timestamp) || { ts: p.timestamp, time: fmtTime(p.timestamp), fullTime: fmtFullTime(p.timestamp) };
+        row[code] = p.price_eur_mwh;
+        byTs.set(p.timestamp, row);
+      });
+    }
+    return [...byTs.values()].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  }, [pricesByCode, selected]);
+
   return (
     <div className="border border-[#2a2b28] bg-[#151614] p-5">
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
         <div>
           <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Day-Ahead Auction Price</h3>
-          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; {market.zone} &middot; 15-min MTU</p>
+          <p className="text-xs text-stone-600 mt-0.5">
+            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; 15-min MTU &middot; {viewDate ? viewDate : "live"}
+          </p>
         </div>
-        <div className="flex gap-6 text-right font-mono">
-          <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Avg</div><div className="text-stone-200 text-sm">{s.avg.toFixed(2)}</div></div>
-          <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Min</div><div className={s.min < 0 ? "text-red-400 text-sm" : "text-stone-200 text-sm"}>{s.min.toFixed(2)}</div></div>
-          <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Max</div><div className="text-amber-400 text-sm">{s.max.toFixed(2)}</div></div>
-          <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Spread</div><div className="text-stone-200 text-sm">{s.spread.toFixed(2)}</div></div>
+        {!multiMode && (
+          <div className="flex gap-6 text-right font-mono">
+            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Avg</div><div className="text-stone-200 text-sm">{s.avg.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Min</div><div className={s.min < 0 ? "text-red-400 text-sm" : "text-stone-200 text-sm"}>{s.min.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Max</div><div className="text-amber-400 text-sm">{s.max.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Spread</div><div className="text-stone-200 text-sm">{s.spread.toFixed(2)}</div></div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span className="text-[10px] text-stone-600 uppercase tracking-wide font-mono mr-1">Compare:</span>
+        {MARKETS.map((m) => {
+          const isOn = selected.includes(m.code);
+          return (
+            <button
+              key={m.code}
+              onClick={() => toggleMarket(m.code)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono border transition-colors"
+              style={{ borderColor: isOn ? m.color : "#2a2b28", color: isOn ? m.color : "#6b6b68", background: isOn ? `${m.color}14` : "transparent" }}
+            >
+              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "#3a3b38" }} />
+              {m.zone}
+            </button>
+          );
+        })}
+        <div className="ml-auto">
+          <DateJumpControls viewDate={viewDate} setViewDate={setViewDate} />
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-          <defs>
-            <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#F2B84B" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#F2B84B" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-          <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
-          <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-          <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "#8a8a86" }} formatter={(v) => [`${v.toFixed(2)} EUR/MWh`, "Price"]} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
-          <Area type="stepAfter" dataKey="price" stroke="#F2B84B" strokeWidth={1.5} fill="url(#priceGrad)" isAnimationActive={false} />
-        </AreaChart>
+
+      {error && (
+        <div className="border border-red-900 bg-red-950/40 text-red-300 text-xs font-mono px-4 py-2 mb-2">{error}</div>
+      )}
+
+      <ResponsiveContainer width="100%" height={260}>
+        {multiMode ? (
+          <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
+            <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
+            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "#8a8a86" }} />
+            <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+            {selected.map((code) => (
+              <Line key={code} type="monotone" dataKey={code} name={code} stroke={MARKET_COLOR[code]} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+            ))}
+          </LineChart>
+        ) : (
+          <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+            <defs>
+              <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#F2B84B" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#F2B84B" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
+            <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
+            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "#8a8a86" }} formatter={(v) => [`${v.toFixed(2)} EUR/MWh`, "Price"]} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
+            <Area type="stepAfter" dataKey={market.code} stroke="#F2B84B" strokeWidth={1.5} fill="url(#priceGrad)" isAnimationActive={false} />
+          </AreaChart>
+        )}
       </ResponsiveContainer>
     </div>
   );
 }
 
-function GenerationMix({ market, generation }) {
-  const gen = generation || [];
+function GenerationMix({ market, dataByMarket }) {
   const [hidden, setHidden] = useState(() => new Set());
+  const [viewDate, setViewDate] = useState(null);
+  const [historicalGen, setHistoricalGen] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!viewDate) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams();
+    params.set("country", market.code);
+    params.set("from", viewDate);
+    params.set("to", viewDate);
+    fetch(`/api/generation?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.error) { setError(json.error); return; }
+        setHistoricalGen(json.generation || []);
+      })
+      .catch((e) => !cancelled && setError(String(e.message || e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [viewDate, market.code]);
+
+  const gen = viewDate ? (historicalGen || []) : (dataByMarket[market.code]?.generation || []);
 
   const fuelKeys = useMemo(() => {
     const keys = new Set();
@@ -124,7 +277,6 @@ function GenerationMix({ market, generation }) {
     return Array.from(keys).sort((a, b) => totals[b] - totals[a]);
   }, [gen]);
 
-  // reset les filières masquées si le marché change et que la clé n'existe plus
   useEffect(() => {
     setHidden((prev) => new Set([...prev].filter((k) => fuelKeys.includes(k))));
   }, [market.code]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -153,13 +305,21 @@ function GenerationMix({ market, generation }) {
 
   return (
     <div className="border border-[#2a2b28] bg-[#151614] p-5">
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
         <div>
           <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Actual Generation Mix</h3>
-          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; MW by production type &middot; click legend to filter</p>
+          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; click legend to filter</p>
         </div>
-        <div className="text-right font-mono"><div className="text-[10px] text-stone-600 uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
+        <div className="flex items-center gap-4">
+          <div className="text-right font-mono"><div className="text-[10px] text-stone-600 uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
+          <DateJumpControls viewDate={viewDate} setViewDate={setViewDate} />
+        </div>
       </div>
+
+      {error && (
+        <div className="border border-red-900 bg-red-950/40 text-red-300 text-xs font-mono px-4 py-2 mb-2">{error}</div>
+      )}
+
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
@@ -546,8 +706,8 @@ export default function MeridianPower() {
       )}
 
       <main className="px-6 pb-8 grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <PriceChart market={market} prices={current.prices} />
-        <GenerationMix market={market} generation={current.generation} />
+        <PriceChart market={market} dataByMarket={dataByMarket} />
+        <GenerationMix market={market} dataByMarket={dataByMarket} />
         <HistoryChart market={market} />
       </main>
 
