@@ -9,7 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { DOMAINS } from "../../../lib/entsoe";
-import { getPriceStatsBucketed, getDataCoverage } from "../../../lib/db";
+import { getPriceStatsBucketed, getPriceHistory, getDataCoverage } from "../../../lib/db";
 import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,8 @@ export async function GET(request) {
     }
   }
 
-  const resolution = searchParams.get("resolution") === "hour" ? "hour" : "day";
+  const resolutionParam = searchParams.get("resolution");
+  const resolution = ["hour", "raw"].includes(resolutionParam) ? resolutionParam : "day";
 
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
@@ -57,15 +58,27 @@ export async function GET(request) {
       { status: 400 }
     );
   }
+  if (resolution === "raw" && to.getTime() - from.getTime() > 8 * 24 * 3600 * 1000) {
+    return NextResponse.json(
+      { error: "Résolution brute (raw, 15-min) limitée à 7 jours par requête." },
+      { status: 400 }
+    );
+  }
 
   try {
     const markets = {};
     await Promise.all(
       countries.map(async (c) => {
-        const [series, coverage] = await Promise.all([
-          getPriceStatsBucketed(c, from.toISOString(), to.toISOString(), resolution),
+        const [rawSeries, coverage] = await Promise.all([
+          resolution === "raw"
+            ? getPriceHistory(c, from.toISOString(), to.toISOString())
+            : getPriceStatsBucketed(c, from.toISOString(), to.toISOString(), resolution),
           getDataCoverage(c),
         ]);
+        const series =
+          resolution === "raw"
+            ? rawSeries.map((p) => ({ bucket: p.timestamp, avg: p.price_eur_mwh, min: p.price_eur_mwh, max: p.price_eur_mwh }))
+            : rawSeries;
         markets[c] = {
           series,
           coverage: { earliest: coverage.earliest, latest: coverage.latest, n_points: Number(coverage.n) },
