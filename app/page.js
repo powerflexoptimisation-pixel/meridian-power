@@ -23,16 +23,16 @@ const FUEL_COLORS = {
 };
 
 function fmtTime(ts) {
-  return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
 function fmtFullTime(ts) {
-  return new Date(ts).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
+  return new Date(ts).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }) + " CET/CEST";
 }
 function fmtDay(ts) {
-  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
+  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "Europe/Berlin" });
 }
 function fmtDayFull(ts) {
-  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  return new Date(ts).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/Berlin" });
 }
 function isoDate(d) {
   return d.toISOString().slice(0, 10);
@@ -42,6 +42,20 @@ function stats(prices) {
   const vals = prices.map((p) => p.price_eur_mwh);
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
   return { avg, min: Math.min(...vals), max: Math.max(...vals), last: vals[vals.length - 1], negCount: vals.filter((v) => v < 0).length, spread: Math.max(...vals) - Math.min(...vals) };
+}
+
+// Renvoie le point dont le créneau de 15 min [ts, ts+15min) contient l'instant
+// présent — c'est-à-dire le prix "en ce moment", pas le dernier point publié
+// (qui est souvent celui de 23:45, puisque le day-ahead est connu à l'avance).
+function currentPricePoint(prices) {
+  if (!prices || prices.length === 0) return null;
+  const now = Date.now();
+  let candidate = prices[0];
+  for (const p of prices) {
+    if (new Date(p.timestamp).getTime() <= now) candidate = p;
+    else break;
+  }
+  return candidate;
 }
 
 function Sparkline({ prices, color }) {
@@ -57,7 +71,9 @@ function Sparkline({ prices, color }) {
 
 function TickerCard({ market, prices, isActive, onClick }) {
   const s = stats(prices);
-  const color = s.last < 0 ? "#E85C5C" : "#3FA796";
+  const current = currentPricePoint(prices);
+  const currentPrice = current ? current.price_eur_mwh : s.last;
+  const color = currentPrice < 0 ? "#E85C5C" : "#3FA796";
   return (
     <button onClick={onClick} className={`flex-1 min-w-[150px] text-left border transition-all duration-150 px-4 py-3 ${isActive ? "border-amber-400 bg-[#20211f]" : "border-[#2a2b28] bg-[#191a17] hover:border-[#3a3b38]"}`}>
       <div className="flex items-center justify-between mb-1">
@@ -65,9 +81,10 @@ function TickerCard({ market, prices, isActive, onClick }) {
         <span className={`text-[10px] font-mono ${s.negCount > 0 ? "text-red-400" : "text-stone-500"}`}>{s.negCount > 0 ? `${s.negCount} NEG` : ""}</span>
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-mono font-semibold text-stone-100">{s.last.toFixed(2)}</span>
+        <span className="text-2xl font-mono font-semibold text-stone-100">{currentPrice.toFixed(2)}</span>
         <span className="text-xs text-stone-500 font-mono">EUR/MWh</span>
       </div>
+      <div className="text-[10px] text-stone-600 font-mono mt-0.5">{current ? `now · ${fmtTime(current.timestamp)}` : ""}</div>
       <div className="mt-2 h-10"><Sparkline prices={prices} color={color} /></div>
       <div className="flex justify-between mt-1 text-[10px] font-mono text-stone-500">
         <span>L {s.min.toFixed(0)}</span><span>H {s.max.toFixed(0)}</span><span>AVG {s.avg.toFixed(0)}</span>
