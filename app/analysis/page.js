@@ -104,6 +104,7 @@ export default function AnalysisPage() {
   const [liveByMarket, setLiveByMarket] = useState({});
   const [histData, setHistData] = useState(null);
   const [flowsData, setFlowsData] = useState(null);
+  const [ntpData, setNtpData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -171,6 +172,25 @@ export default function AnalysisPage() {
     return () => { cancelled = true; };
   }, [activeMarket, viewDate, isLive]);
 
+  // Données netztransparenz.de (reBAP, RZ-Saldo, redispatch) — spécifiques à
+  // l'Allemagne, donc uniquement chargées quand DE est le marché actif.
+  useEffect(() => {
+    if (activeMarket !== "DE") { setNtpData(null); return; }
+    let cancelled = false;
+    const ntpParams = new URLSearchParams();
+    if (!isLive) {
+      ntpParams.set("from", viewDate);
+      ntpParams.set("to", viewDate);
+    }
+    fetch(`/api/netztransparenz?${ntpParams.toString()}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (!cancelled && !json.error) setNtpData(json);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeMarket, viewDate, isLive]);
+
   const series = useMemo(() => {
     if (isLive) {
       const d = liveByMarket[activeMarket];
@@ -230,6 +250,19 @@ export default function AnalysisPage() {
   const totalNetAvg = flowsChartData.length
     ? flowsChartData.reduce((s, r) => s + r.total, 0) / flowsChartData.length
     : 0;
+
+  const reBapChartData = (ntpData?.reBAP || []).map((p) => ({
+    time: fmtTime(p.timestamp),
+    rebap: p.rebap_unterdeckt,
+  }));
+  const reBapStats = reBapChartData.length
+    ? {
+        avg: reBapChartData.reduce((s, r) => s + (r.rebap || 0), 0) / reBapChartData.length,
+        min: Math.min(...reBapChartData.map((r) => r.rebap)),
+        max: Math.max(...reBapChartData.map((r) => r.rebap)),
+      }
+    : null;
+  const redispatchSummary = ntpData?.redispatchSummary;
 
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -420,6 +453,66 @@ export default function AnalysisPage() {
           </div>
         )}
 
+        {activeMarket === "DE" && ntpData && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">reBAP — Ausgleichsenergiepreis</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; imbalance settlement price &middot; source: netztransparenz.de</p>
+                </div>
+                {reBapStats && (
+                  <div className="flex gap-4 text-right font-mono">
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{reBapStats.avg.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${reBapStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{reBapStats.min.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{reBapStats.max.toFixed(2)}</div></div>
+                  </div>
+                )}
+              </div>
+              {reBapChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={reBapChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(reBapChartData.length / 8))} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(2)} EUR/MWh`} />
+                    <Line type="stepAfter" dataKey="rebap" stroke="#C4622D" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée reBAP pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="mb-4">
+                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Redispatch</h3>
+                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; grid congestion measures &middot; source: netztransparenz.de</p>
+              </div>
+              {redispatchSummary && redispatchSummary.count > 0 ? (
+                <>
+                  <div className="flex gap-6 font-mono mb-4">
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Events</div><div className="text-lg text-[var(--mp-text-1)]">{redispatchSummary.count}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Total energy</div><div className="text-lg text-[var(--mp-text-1)]">{redispatchSummary.totalEnergyMwh.toFixed(0)} MWh</div></div>
+                  </div>
+                  <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
+                    {Object.entries(redispatchSummary.byReason)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([reason, mwh]) => (
+                        <div key={reason} className="flex justify-between text-xs font-mono text-[var(--mp-text-5)]">
+                          <span className="truncate mr-2">{reason}</span>
+                          <span className="text-[var(--mp-text-3)] whitespace-nowrap">{mwh.toFixed(0)} MWh</span>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune mesure de redispatch pour cette période.</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {!loading && !error && series.length === 0 && (
           <div className="border border-[var(--mp-border)] text-[var(--mp-text-5)] text-xs font-mono px-4 py-6 text-center">
             Aucune donnée pour cette sélection.
@@ -428,7 +521,7 @@ export default function AnalysisPage() {
       </main>
 
       <footer className="px-6 py-4 border-t border-[var(--mp-border)] text-[10px] font-mono text-[var(--mp-text-6)]">
-        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data. Day-ahead forecast comparison available in historical view.
+        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data. Day-ahead forecast comparison available in historical view. reBAP/Redispatch: Germany only, source netztransparenz.de.
       </footer>
     </div>
   );
