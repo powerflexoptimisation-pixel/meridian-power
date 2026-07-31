@@ -24,6 +24,36 @@ const FUEL_COLORS = {
   "Energy storage": "#D4A24C", "Fossil Oil shale": "#5A4A3A", "Fossil Peat": "#7A6650",
 };
 
+// Facteurs d'émission indicatifs (gCO2eq/kWh, émissions directes) — ordres de
+// grandeur usuels (type electricityMaps/ADEME/EEA), pas des valeurs exactes
+// par centrale. Sert à un indicateur "intensité carbone" informatif sur le
+// mix de génération, pas à un bilan carbone certifié.
+const EMISSION_FACTORS = {
+  "Solar": 45, "Wind Onshore": 11, "Wind Offshore": 12, "Nuclear": 12,
+  "Fossil Gas": 490, "Fossil Hard coal": 820, "Fossil Brown coal/Lignite": 1050,
+  "Fossil Oil": 650, "Fossil Coal-derived gas": 800, "Fossil Oil shale": 1050,
+  "Fossil Peat": 900, "Hydro Run-of-river": 24, "Hydro Water Reservoir": 24,
+  "Hydro Pumped Storage": 24, "Biomass": 230, "Waste": 370, "Geothermal": 38,
+  "Marine": 17, "Other renewable": 20, "Other": 500, "Energy storage": 0,
+};
+
+// Intensité carbone (gCO2/kWh) du mix à un instant donné, pondérée par la
+// puissance de chaque filière (MW) — proportionnel à un calcul par énergie
+// puisque toutes les filières partagent le même pas de temps.
+function carbonIntensity(genRow) {
+  if (!genRow) return null;
+  let totalMw = 0;
+  let weighted = 0;
+  for (const [fuel, mw] of Object.entries(genRow)) {
+    if (fuel === "timestamp" || !(mw > 0)) continue;
+    const factor = EMISSION_FACTORS[fuel] ?? 500;
+    totalMw += mw;
+    weighted += mw * factor;
+  }
+  if (totalMw === 0) return null;
+  return weighted / totalMw;
+}
+
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
@@ -60,6 +90,17 @@ function currentPricePoint(prices) {
   return candidate;
 }
 
+function currentGenerationPoint(generation) {
+  if (!generation || generation.length === 0) return null;
+  const now = Date.now();
+  let candidate = generation[0];
+  for (const g of generation) {
+    if (new Date(g.timestamp).getTime() <= now) candidate = g;
+    else break;
+  }
+  return candidate;
+}
+
 function Sparkline({ prices, color }) {
   const chartData = (prices || []).map((p) => ({ v: p.price_eur_mwh }));
   return (
@@ -71,11 +112,14 @@ function Sparkline({ prices, color }) {
   );
 }
 
-function TickerCard({ market, prices, isActive, onClick }) {
+function TickerCard({ market, prices, generation, isActive, onClick }) {
   const s = stats(prices);
   const current = currentPricePoint(prices);
   const currentPrice = current ? current.price_eur_mwh : s.last;
   const color = currentPrice < 0 ? "#E85C5C" : "#3FA796";
+  const curGen = currentGenerationPoint(generation);
+  const co2 = carbonIntensity(curGen);
+  const co2Color = co2 === null ? "var(--mp-text-6)" : co2 < 150 ? "#3FA796" : co2 < 350 ? "#E8C468" : "#C4622D";
   return (
     <button onClick={onClick} className={`flex-1 min-w-[150px] text-left border transition-all duration-150 px-4 py-3 ${isActive ? "border-amber-400 bg-[var(--mp-panel-active)]" : "border-[var(--mp-border)] bg-[var(--mp-panel-alt)] hover:border-[var(--mp-border-hover)]"}`}>
       <div className="flex items-center justify-between mb-1">
@@ -86,7 +130,15 @@ function TickerCard({ market, prices, isActive, onClick }) {
         <span className="text-2xl font-mono font-semibold text-[var(--mp-text-1)]">{currentPrice.toFixed(2)}</span>
         <span className="text-xs text-[var(--mp-text-5)] font-mono">EUR/MWh</span>
       </div>
-      <div className="text-[10px] text-[var(--mp-text-6)] font-mono mt-0.5">{current ? `now · ${fmtTime(current.timestamp)}` : ""}</div>
+      <div className="flex items-center justify-between mt-0.5">
+        <span className="text-[10px] text-[var(--mp-text-6)] font-mono">{current ? `now · ${fmtTime(current.timestamp)}` : ""}</span>
+        {co2 !== null && (
+          <span className="text-[10px] font-mono flex items-center gap-1" style={{ color: co2Color }} title="Intensité carbone indicative du mix (gCO2/kWh)">
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: co2Color }} />
+            {co2.toFixed(0)}g CO&#8322;
+          </span>
+        )}
+      </div>
       <div className="mt-2 h-10"><Sparkline prices={prices} color={color} /></div>
       <div className="flex justify-between mt-1 text-[10px] font-mono text-[var(--mp-text-5)]">
         <span>L {s.min.toFixed(0)}</span><span>H {s.max.toFixed(0)}</span><span>AVG {s.avg.toFixed(0)}</span>
@@ -719,7 +771,7 @@ export default function MeridianPower() {
 
       <div className="px-6 py-4 flex gap-3 overflow-x-auto">
         {MARKETS.map((m) => (
-          <TickerCard key={m.code} market={m} prices={dataByMarket[m.code]?.prices} isActive={m.code === activeMarket} onClick={() => setActiveMarket(m.code)} />
+          <TickerCard key={m.code} market={m} prices={dataByMarket[m.code]?.prices} generation={dataByMarket[m.code]?.generation} isActive={m.code === activeMarket} onClick={() => setActiveMarket(m.code)} />
         ))}
       </div>
 
