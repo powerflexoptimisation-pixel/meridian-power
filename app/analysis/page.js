@@ -212,7 +212,13 @@ export default function AnalysisPage() {
         byTs.set(p.timestamp, row);
       });
     }
-    return [...byTs.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+    const rows = [...byTs.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+    // Position nette totale = somme des flux nets sur toutes les frontières à
+    // cet instant (positif = pays exportateur net global, négatif = importateur net).
+    rows.forEach((row) => {
+      row.total = neighbors.reduce((sum, n) => sum + (row[n] ?? 0), 0);
+    });
+    return rows;
   }, [flowsData, neighbors]);
   const flowAvgByNeighbor = Object.fromEntries(
     neighbors.map((n) => {
@@ -221,6 +227,9 @@ export default function AnalysisPage() {
       return [n, avg];
     })
   );
+  const totalNetAvg = flowsChartData.length
+    ? flowsChartData.reduce((s, r) => s + r.total, 0) / flowsChartData.length
+    : 0;
 
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -369,11 +378,20 @@ export default function AnalysisPage() {
 
         {neighbors.length > 0 && (
           <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-            <div className="mb-4">
-              <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Cross-Border Physical Flows</h3>
-              <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
-                {market.name} &middot; all {neighbors.length} border{neighbors.length > 1 ? "s" : ""} &middot; positive = net export from {market.zone}, negative = net import
-              </p>
+            <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Cross-Border Physical Flows</h3>
+                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
+                  {market.name} &middot; all {neighbors.length} border{neighbors.length > 1 ? "s" : ""} &middot; positive = net export, negative = net import
+                </p>
+              </div>
+              <div className="text-right font-mono">
+                <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Total net position (avg)</div>
+                <div className="text-lg font-semibold" style={{ color: totalNetAvg >= 0 ? "#3FA796" : "#C4622D" }}>
+                  {totalNetAvg >= 0 ? "+" : ""}{(totalNetAvg / 1000).toFixed(2)}GW
+                  <span className="text-xs text-[var(--mp-text-6)] font-normal ml-1">{totalNetAvg >= 0 ? "net exporter" : "net importer"}</span>
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-[var(--mp-border)]">
               {neighbors.map((n) => (
@@ -394,8 +412,9 @@ export default function AnalysisPage() {
                 <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
                 <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
                 {neighbors.map((n) => (
-                  <Line key={n} type="monotone" dataKey={n} name={`→ ${n}`} stroke={NEIGHBOR_COLORS[n] || "#888"} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  <Line key={n} type="monotone" dataKey={n} name={`→ ${n}`} stroke={NEIGHBOR_COLORS[n] || "#888"} strokeWidth={1} strokeOpacity={0.55} dot={false} isAnimationActive={false} />
                 ))}
+                <Line type="monotone" dataKey="total" name="Total net position" stroke="var(--mp-text-1)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
