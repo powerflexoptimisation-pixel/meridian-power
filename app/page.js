@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { ThemeToggle } from "./theme-toggle";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const MARKETS = [
@@ -76,18 +77,18 @@ function TickerCard({ market, prices, isActive, onClick }) {
   const currentPrice = current ? current.price_eur_mwh : s.last;
   const color = currentPrice < 0 ? "#E85C5C" : "#3FA796";
   return (
-    <button onClick={onClick} className={`flex-1 min-w-[150px] text-left border transition-all duration-150 px-4 py-3 ${isActive ? "border-amber-400 bg-[#20211f]" : "border-[#2a2b28] bg-[#191a17] hover:border-[#3a3b38]"}`}>
+    <button onClick={onClick} className={`flex-1 min-w-[150px] text-left border transition-all duration-150 px-4 py-3 ${isActive ? "border-amber-400 bg-[var(--mp-panel-active)]" : "border-[var(--mp-border)] bg-[var(--mp-panel-alt)] hover:border-[var(--mp-border-hover)]"}`}>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] tracking-[0.15em] text-stone-400 font-mono">{market.zone}</span>
-        <span className={`text-[10px] font-mono ${s.negCount > 0 ? "text-red-400" : "text-stone-500"}`}>{s.negCount > 0 ? `${s.negCount} NEG` : ""}</span>
+        <span className="text-[11px] tracking-[0.15em] text-[var(--mp-text-4)] font-mono">{market.zone}</span>
+        <span className={`text-[10px] font-mono ${s.negCount > 0 ? "text-red-400" : "text-[var(--mp-text-5)]"}`}>{s.negCount > 0 ? `${s.negCount} NEG` : ""}</span>
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-mono font-semibold text-stone-100">{currentPrice.toFixed(2)}</span>
-        <span className="text-xs text-stone-500 font-mono">EUR/MWh</span>
+        <span className="text-2xl font-mono font-semibold text-[var(--mp-text-1)]">{currentPrice.toFixed(2)}</span>
+        <span className="text-xs text-[var(--mp-text-5)] font-mono">EUR/MWh</span>
       </div>
-      <div className="text-[10px] text-stone-600 font-mono mt-0.5">{current ? `now · ${fmtTime(current.timestamp)}` : ""}</div>
+      <div className="text-[10px] text-[var(--mp-text-6)] font-mono mt-0.5">{current ? `now · ${fmtTime(current.timestamp)}` : ""}</div>
       <div className="mt-2 h-10"><Sparkline prices={prices} color={color} /></div>
-      <div className="flex justify-between mt-1 text-[10px] font-mono text-stone-500">
+      <div className="flex justify-between mt-1 text-[10px] font-mono text-[var(--mp-text-5)]">
         <span>L {s.min.toFixed(0)}</span><span>H {s.max.toFixed(0)}</span><span>AVG {s.avg.toFixed(0)}</span>
       </div>
     </button>
@@ -101,10 +102,10 @@ function DateJumpControls({ viewDate, setViewDate, maxRangeDays = 1 }) {
         type="date"
         value={viewDate || ""}
         onChange={(e) => setViewDate(e.target.value || null)}
-        className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+        className="bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
       />
       {viewDate && (
-        <button onClick={() => setViewDate(null)} className="px-2 py-1 border border-[#2a2b28] text-stone-500 hover:border-amber-400 hover:text-amber-400" title="Revenir au live">
+        <button onClick={() => setViewDate(null)} className="px-2 py-1 border border-[var(--mp-border)] text-[var(--mp-text-5)] hover:border-amber-400 hover:text-amber-400" title="Revenir au live">
           ● LIVE
         </button>
       )}
@@ -182,26 +183,26 @@ function PriceChart({ market, dataByMarket }) {
   }, [pricesByCode, selected]);
 
   return (
-    <div className="border border-[#2a2b28] bg-[#151614] p-5">
+    <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Day-Ahead Auction Price</h3>
-          <p className="text-xs text-stone-600 mt-0.5">
+          <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Day-Ahead Auction Price</h3>
+          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
             {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; 15-min MTU &middot; {viewDate ? viewDate : "live"}
           </p>
         </div>
         {!multiMode && (
           <div className="flex gap-6 text-right font-mono">
-            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Avg</div><div className="text-stone-200 text-sm">{s.avg.toFixed(2)}</div></div>
-            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Min</div><div className={s.min < 0 ? "text-red-400 text-sm" : "text-stone-200 text-sm"}>{s.min.toFixed(2)}</div></div>
-            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Max</div><div className="text-amber-400 text-sm">{s.max.toFixed(2)}</div></div>
-            <div><div className="text-[10px] text-stone-600 uppercase tracking-wide">Spread</div><div className="text-stone-200 text-sm">{s.spread.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-[var(--mp-text-2)] text-sm">{s.avg.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={s.min < 0 ? "text-red-400 text-sm" : "text-[var(--mp-text-2)] text-sm"}>{s.min.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-amber-400 text-sm">{s.max.toFixed(2)}</div></div>
+            <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Spread</div><div className="text-[var(--mp-text-2)] text-sm">{s.spread.toFixed(2)}</div></div>
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="text-[10px] text-stone-600 uppercase tracking-wide font-mono mr-1">Compare:</span>
+        <span className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide font-mono mr-1">Compare:</span>
         {MARKETS.map((m) => {
           const isOn = selected.includes(m.code);
           return (
@@ -209,9 +210,9 @@ function PriceChart({ market, dataByMarket }) {
               key={m.code}
               onClick={() => toggleMarket(m.code)}
               className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono border transition-colors"
-              style={{ borderColor: isOn ? m.color : "#2a2b28", color: isOn ? m.color : "#6b6b68", background: isOn ? `${m.color}14` : "transparent" }}
+              style={{ borderColor: isOn ? m.color : "var(--mp-grid)", color: isOn ? m.color : "var(--mp-tick)", background: isOn ? `${m.color}14` : "transparent" }}
             >
-              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "#3a3b38" }} />
+              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "var(--mp-border-hover)" }} />
               {m.zone}
             </button>
           );
@@ -228,10 +229,10 @@ function PriceChart({ market, dataByMarket }) {
       <ResponsiveContainer width="100%" height={260}>
         {multiMode ? (
           <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-            <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
-            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "#8a8a86" }} />
+            <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+            <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={11} />
+            <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
             <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
             {selected.map((code) => (
               <Line key={code} type="monotone" dataKey={code} name={code} stroke={MARKET_COLOR[code]} strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -245,10 +246,10 @@ function PriceChart({ market, dataByMarket }) {
                 <stop offset="95%" stopColor="#F2B84B" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-            <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
-            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "#8a8a86" }} formatter={(v) => [`${v.toFixed(2)} EUR/MWh`, "Price"]} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
+            <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+            <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={11} />
+            <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => [`${v.toFixed(2)} EUR/MWh`, "Price"]} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
             <Area type="stepAfter" dataKey={market.code} stroke="#F2B84B" strokeWidth={1.5} fill="url(#priceGrad)" isAnimationActive={false} />
           </AreaChart>
         )}
@@ -322,14 +323,14 @@ function GenerationMix({ market, dataByMarket }) {
   }
 
   return (
-    <div className="border border-[#2a2b28] bg-[#151614] p-5">
+    <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Actual Generation Mix</h3>
-          <p className="text-xs text-stone-600 mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; click legend to filter</p>
+          <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Actual Generation Mix</h3>
+          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; click legend to filter</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-right font-mono"><div className="text-[10px] text-stone-600 uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
+          <div className="text-right font-mono"><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
           <DateJumpControls viewDate={viewDate} setViewDate={setViewDate} />
         </div>
       </div>
@@ -340,23 +341,23 @@ function GenerationMix({ market, dataByMarket }) {
 
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-          <XAxis dataKey="time" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={11} />
-          <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-          <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "#8a8a86" }} />
+          <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+          <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={11} />
+          <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+          <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
           {visibleKeys.slice(0, 12).map((k) => (
             <Area key={k} type="monotone" dataKey={k} stackId="1" stroke={FUEL_COLORS[k] || "#888"} fill={FUEL_COLORS[k] || "#888"} fillOpacity={0.75} isAnimationActive={false} />
           ))}
         </AreaChart>
       </ResponsiveContainer>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#2a2b28]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[var(--mp-border)]">
         {fuelKeys.slice(0, 12).map((k) => {
           const isHidden = hidden.has(k);
           return (
             <button
               key={k}
               onClick={() => toggleFuel(k)}
-              className={`flex items-center gap-1.5 text-[10px] font-mono transition-opacity ${isHidden ? "opacity-35" : "opacity-100"} text-stone-500 hover:text-stone-300`}
+              className={`flex items-center gap-1.5 text-[10px] font-mono transition-opacity ${isHidden ? "opacity-35" : "opacity-100"} text-[var(--mp-text-5)] hover:text-[var(--mp-text-3)]`}
               title={isHidden ? "Cliquer pour afficher" : "Cliquer pour masquer"}
             >
               <span className="w-2 h-2 inline-block" style={{ background: FUEL_COLORS[k] || "#888" }} />
@@ -524,11 +525,11 @@ function HistoryChart({ market }) {
   const multiMode = selected.length > 1;
 
   return (
-    <div className="border border-[#2a2b28] bg-[#151614] p-5 xl:col-span-2">
+    <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5 xl:col-span-2">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-sm tracking-[0.15em] text-stone-400 font-mono uppercase">Price History</h3>
-          <p className="text-xs text-stone-600 mt-0.5">
+          <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Price History</h3>
+          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
             {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; {resolution === "hour" ? "hourly" : "daily"} avg{!multiMode ? " / min / max" : ""}
             {hasData && (
               <> &middot; {fmtDayFull(coverageList[0].coverage.earliest)} → {fmtDayFull(coverageList[0].coverage.latest)} stored</>
@@ -537,7 +538,7 @@ function HistoryChart({ market }) {
         </div>
         <a
           href={exportUrl}
-          className="px-3 py-1.5 text-xs font-mono border border-[#2a2b28] text-stone-400 hover:border-amber-400 hover:text-amber-400 transition-colors"
+          className="px-3 py-1.5 text-xs font-mono border border-[var(--mp-border)] text-[var(--mp-text-4)] hover:border-amber-400 hover:text-amber-400 transition-colors"
         >
           ⬇ Export CSV
         </a>
@@ -545,7 +546,7 @@ function HistoryChart({ market }) {
 
       {/* Sélecteur de marchés (comparaison) */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <span className="text-[10px] text-stone-600 uppercase tracking-wide font-mono mr-1">Compare:</span>
+        <span className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide font-mono mr-1">Compare:</span>
         {MARKETS.map((m) => {
           const isOn = selected.includes(m.code);
           return (
@@ -554,12 +555,12 @@ function HistoryChart({ market }) {
               onClick={() => toggleMarket(m.code)}
               className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono border transition-colors"
               style={{
-                borderColor: isOn ? m.color : "#2a2b28",
-                color: isOn ? m.color : "#6b6b68",
+                borderColor: isOn ? m.color : "var(--mp-grid)",
+                color: isOn ? m.color : "var(--mp-tick)",
                 background: isOn ? `${m.color}14` : "transparent",
               }}
             >
-              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "#3a3b38" }} />
+              <span className="w-2 h-2 inline-block rounded-full" style={{ background: isOn ? m.color : "var(--mp-border-hover)" }} />
               {m.zone}
             </button>
           );
@@ -567,13 +568,13 @@ function HistoryChart({ market }) {
       </div>
 
       {/* Plage de dates + résolution */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#2a2b28]">
+      <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[var(--mp-border)]">
         <div className="flex gap-1">
           {QUICK_RANGES.map((r) => (
             <button
               key={r.label}
               onClick={() => pickQuick(r.days)}
-              className={`px-3 py-1 text-xs font-mono border ${!isCustom && quickDays === r.days ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+              className={`px-3 py-1 text-xs font-mono border ${!isCustom && quickDays === r.days ? "border-amber-400 text-amber-400" : "border-[var(--mp-border)] text-[var(--mp-text-5)] hover:border-[var(--mp-border-hover)]"}`}
             >
               {r.label}
             </button>
@@ -585,17 +586,17 @@ function HistoryChart({ market }) {
             type="date"
             defaultValue={customFrom || ""}
             onChange={(e) => applyCustomRange(e.target.value, customTo || e.target.value)}
-            className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+            className="bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
           />
-          <span className="text-stone-600">→</span>
+          <span className="text-[var(--mp-text-6)]">→</span>
           <input
             type="date"
             defaultValue={customTo || ""}
             onChange={(e) => applyCustomRange(customFrom || e.target.value, e.target.value)}
-            className="bg-[#0f100e] border border-[#2a2b28] text-stone-300 px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+            className="bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
           />
           {isCustom && (
-            <button onClick={() => { setCustomFrom(null); setCustomTo(null); }} className="text-stone-600 hover:text-stone-400 px-1" title="Revenir aux raccourcis">
+            <button onClick={() => { setCustomFrom(null); setCustomTo(null); }} className="text-[var(--mp-text-6)] hover:text-[var(--mp-text-4)] px-1" title="Revenir aux raccourcis">
               ✕
             </button>
           )}
@@ -606,7 +607,7 @@ function HistoryChart({ market }) {
             <button
               key={r}
               onClick={() => setResolution(r)}
-              className={`px-3 py-1 text-xs font-mono border uppercase ${resolution === r ? "border-amber-400 text-amber-400" : "border-[#2a2b28] text-stone-500 hover:border-[#3a3b38]"}`}
+              className={`px-3 py-1 text-xs font-mono border uppercase ${resolution === r ? "border-amber-400 text-amber-400" : "border-[var(--mp-border)] text-[var(--mp-text-5)] hover:border-[var(--mp-border-hover)]"}`}
             >
               {r === "day" ? "Daily" : "Hourly"}
             </button>
@@ -614,7 +615,7 @@ function HistoryChart({ market }) {
         </div>
 
         {!multiMode && isCustom && (
-          <label className="flex items-center gap-1.5 text-xs font-mono text-stone-500 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-xs font-mono text-[var(--mp-text-5)] cursor-pointer">
             <input type="checkbox" checked={compareYoY} onChange={(e) => setCompareYoY(e.target.checked)} className="accent-amber-400" />
             Compare vs. last year
           </label>
@@ -630,7 +631,7 @@ function HistoryChart({ market }) {
       )}
 
       {!error && !loading && !hasData && (
-        <div className="border border-[#2a2b28] text-stone-500 text-xs font-mono px-4 py-6 text-center">
+        <div className="border border-[var(--mp-border)] text-[var(--mp-text-5)] text-xs font-mono px-4 py-6 text-center">
           Aucune donnée historique stockée pour cette sélection.
         </div>
       )}
@@ -638,22 +639,22 @@ function HistoryChart({ market }) {
       {hasData && (
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#2a2b28" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "#2a2b28" }} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 10))} />
-            <YAxis tick={{ fill: "#6b6b68", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip contentStyle={{ background: "#0f100e", border: "1px solid #3a3b38", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "#8a8a86" }} />
+            <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 10))} />
+            <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+            <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
             <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
             {!multiMode && (
               <>
-                <Line type="monotone" dataKey="max" name="max" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
-                <Line type="monotone" dataKey="min" name="min" stroke="#6b6b68" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+                <Line type="monotone" dataKey="max" name="max" stroke="var(--mp-tick)" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
+                <Line type="monotone" dataKey="min" name="min" stroke="var(--mp-tick)" strokeWidth={1} dot={false} isAnimationActive={false} strokeDasharray="2 2" />
               </>
             )}
             {selected.map((code) => (
               <Line key={code} type="monotone" dataKey={code} name={`${code} avg`} stroke={MARKET_COLOR[code]} strokeWidth={2} dot={false} isAnimationActive={false} />
             ))}
             {compareYoY && !multiMode && (
-              <Line type="monotone" dataKey="ly" name="avg (last year)" stroke="#8a8a86" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="ly" name="avg (last year)" stroke="var(--mp-tooltip-label)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
             )}
           </LineChart>
         </ResponsiveContainer>
@@ -699,19 +700,20 @@ export default function MeridianPower() {
   const current = dataByMarket[activeMarket] || {};
 
   return (
-    <div className="min-h-screen bg-[#101110] text-stone-200" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
-      <header className="border-b border-[#2a2b28] px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
+      <header className="border-b border-[var(--mp-border)] px-6 py-4 flex items-center justify-between">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-xl font-semibold tracking-tight text-stone-100">Meridian Power</h1>
-          <span className="text-[11px] font-mono text-stone-600 tracking-[0.15em] uppercase">European Wholesale Markets</span>
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--mp-text-1)]">Meridian Power</h1>
+          <span className="text-[11px] font-mono text-[var(--mp-text-6)] tracking-[0.15em] uppercase">European Wholesale Markets</span>
           <nav className="flex items-center gap-1 ml-4">
             <span className="px-2 py-1 text-xs font-mono border border-amber-400 text-amber-400">Home</span>
-            <Link href="/analysis" className="px-2 py-1 text-xs font-mono border border-[#2a2b28] text-stone-500 hover:border-[#3a3b38] hover:text-stone-300">Analysis</Link>
+            <Link href="/analysis" className="px-2 py-1 text-xs font-mono border border-[var(--mp-border)] text-[var(--mp-text-5)] hover:border-[var(--mp-border-hover)] hover:text-[var(--mp-text-3)]">Analysis</Link>
           </nav>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-mono text-stone-500">
+        <div className="flex items-center gap-3 text-[11px] font-mono text-[var(--mp-text-5)]">
           <span className={`w-1.5 h-1.5 rounded-full inline-block ${loading ? "bg-amber-400 animate-pulse" : "bg-teal-400"}`} />
           {loading ? "Refreshing..." : "Source: ENTSO-E Transparency Platform · Live"}
+          <ThemeToggle />
         </div>
       </header>
 
@@ -733,7 +735,7 @@ export default function MeridianPower() {
         <HistoryChart market={market} />
       </main>
 
-      <footer className="px-6 py-4 border-t border-[#2a2b28] text-[10px] font-mono text-stone-600 flex justify-between">
+      <footer className="px-6 py-4 border-t border-[var(--mp-border)] text-[10px] font-mono text-[var(--mp-text-6)] flex justify-between">
         <span>Phase 1 markets: DE &middot; FR &middot; IT &middot; ES</span>
         <span>Contract types: Day-ahead &middot; Intraday &middot; Balancing &middot; Forwards &middot; PPA (roadmap)</span>
       </footer>
