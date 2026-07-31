@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { collectCountryForRange, DOMAINS } from "../../../../lib/entsoe";
 import { upsertPrices, upsertGeneration, logCollection } from "../../../../lib/db";
+import { berlinMidnightUTC } from "../../../../lib/tz";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,8 +36,6 @@ export async function GET(request) {
     }
   }
 
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const summary = [];
 
   for (const country of countries) {
@@ -44,8 +43,9 @@ export async function GET(request) {
     let daysFailed = 0;
     for (let i = 1; i <= days; i++) {
       const dayIndex = offset + i;
-      const periodEnd = new Date(today.getTime() - (dayIndex - 1) * 24 * 3600 * 1000);
-      const periodStart = new Date(periodEnd.getTime() - 24 * 3600 * 1000);
+      // Journée de marché en heure de Berlin (CET/CEST), pas en UTC.
+      const periodEnd = berlinMidnightUTC(dayIndex - 1);
+      const periodStart = berlinMidnightUTC(dayIndex);
       try {
         const data = await collectCountryForRange(country, periodStart, periodEnd);
         const nPrices = await upsertPrices(country, data.prices);
