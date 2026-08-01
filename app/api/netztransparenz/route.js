@@ -2,7 +2,7 @@
 // Usage:
 //   /api/netztransparenz?from=2026-06-24&to=2026-06-24            (jour, 00:00-24:00 Berlin)
 //   /api/netztransparenz?fromDt=2026-06-24T08:00&toDt=2026-07-10T20:00  (plage précise, priorité sur from/to)
-// (aucun paramètre -> mode live : hier + aujourd'hui + demain pour les
+// (aucun paramètre -> mode live : les 2 derniers jours disponibles pour les
 // séries temps réel, fenêtre élargie pour les séries qualitätsgesichert
 // retardées — voir plus bas)
 // Données spécifiques à l'Allemagne (source: les 4 GRT allemands via
@@ -17,7 +17,7 @@ import {
   fetchActivatedAFRR, fetchActivatedMFRR, fetchNRVSaldo, fetchTrafficLight,
   fetchIdAep, fetchNegativePreise, fetchHochrechnungSolar, fetchHochrechnungWind,
 } from "../../../lib/netztransparenz";
-import { berlinMidnightUTC, berlinDateToUTC, berlinDateTimeToUTC } from "../../../lib/tz";
+import { berlinDateToUTC, berlinDateTimeToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,14 +47,13 @@ export async function GET(request) {
     from = berlinDateToUTC(fromParam);
     to = new Date(berlinDateToUTC(toParam).getTime() + 24 * 3600 * 1000);
   } else {
-    // Mode live: hier (contexte) + aujourd'hui + demain. Les séries "betrieblich"
-    // (RZ-Saldo, AEP-Schätzer) n'ont naturellement pas de données au-delà de
-    // "maintenant" (pas des prévisions), donc la borne "demain" ne ramène rien
-    // de plus pour elles — mais Redispatch publie parfois des mesures déjà
-    // planifiées pour le lendemain, qu'on veut voir apparaître dès qu'elles
-    // sont annoncées plutôt que d'attendre le jour J.
-    from = berlinMidnightUTC(1);
-    to = berlinMidnightUTC(-1);
+    // Mode live: les 2 derniers jours disponibles (fenêtre glissante de 48h
+    // jusqu'à maintenant). RZ-Saldo/AEP-Schätzer/NRV-Saldo/etc. n'ont de
+    // toute façon rien au-delà de "maintenant" (pas des prévisions). Pour
+    // voir des mesures Redispatch déjà planifiées au-delà d'aujourd'hui,
+    // utiliser une plage explicite (from/to ou fromDt/toDt).
+    to = new Date();
+    from = new Date(to.getTime() - 2 * 24 * 3600 * 1000);
   }
   if (Number.isNaN(from?.getTime()) || Number.isNaN(to?.getTime()) || from >= to) {
     return NextResponse.json({ error: "Plage de dates invalide." }, { status: 400 });
