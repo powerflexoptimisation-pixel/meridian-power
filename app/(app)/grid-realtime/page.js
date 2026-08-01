@@ -258,7 +258,7 @@ export default function GridRealtimePage() {
               <div className="flex items-baseline justify-between mb-4">
                 <div>
                   <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Hochrechnung Solar &amp; Wind</h3>
-                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Real-time renewable extrapolation, DE total (MW)</p>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Real-time renewable extrapolation, DE total &middot; Solar (GW, left) / Wind (MW, right) — separate scales</p>
                 </div>
                 <RangeBadge from={ntpData.from} to={ntpData.to} />
               </div>
@@ -271,11 +271,12 @@ export default function GridRealtimePage() {
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                     <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(hochrechnungChartData.length / 8))} />
-                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
-                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                    <YAxis yAxisId="solar" tick={{ fill: "#E8C468", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
+                    <YAxis yAxisId="wind" orientation="right" tick={{ fill: "#4A94C4", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${v.toFixed(0)}MW`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v, n) => n === "Solar" ? `${(v / 1000).toFixed(2)} GW` : `${v.toFixed(1)} MW`} />
                     <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
-                    <Area type="monotone" dataKey="solar" name="Solar" stroke="#E8C468" strokeWidth={1.5} fill="url(#solarGradRT)" isAnimationActive={false} connectNulls />
-                    <Area type="monotone" dataKey="wind" name="Wind" stroke="#4A94C4" strokeWidth={1.5} fill="url(#windGradRT)" isAnimationActive={false} connectNulls />
+                    <Area yAxisId="solar" type="monotone" dataKey="solar" name="Solar" stroke="#E8C468" strokeWidth={1.5} fill="url(#solarGradRT)" isAnimationActive={false} connectNulls />
+                    <Area yAxisId="wind" type="monotone" dataKey="wind" name="Wind" stroke="#4A94C4" strokeWidth={1.5} fill="url(#windGradRT)" isAnimationActive={false} connectNulls />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">No data.</div>}
