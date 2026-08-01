@@ -14,7 +14,8 @@
 import { NextResponse } from "next/server";
 import {
   fetchReBAP, fetchRZSaldo, fetchRedispatch, fetchAepSchaetzer,
-  fetchActivatedAFRR, fetchActivatedMFRR,
+  fetchActivatedAFRR, fetchActivatedMFRR, fetchNRVSaldo, fetchTrafficLight,
+  fetchIdAep, fetchNegativePreise, fetchHochrechnungSolar, fetchHochrechnungWind,
 } from "../../../lib/netztransparenz";
 import { berlinMidnightUTC, berlinDateToUTC, berlinDateTimeToUTC } from "../../../lib/tz";
 
@@ -79,13 +80,22 @@ export async function GET(request) {
   const activationTo = isLive ? new Date(Date.now() - 30 * 24 * 3600 * 1000) : to;
 
   try {
-    const [reBAP, rzSaldo, redispatch, aepSchaetzer, activatedAFRR, activatedMFRR] = await Promise.all([
+    const [
+      reBAP, rzSaldo, redispatch, aepSchaetzer, activatedAFRR, activatedMFRR,
+      nrvSaldo, trafficLight, idAep, negativePreise, hochrechnungSolar, hochrechnungWind,
+    ] = await Promise.all([
       fetchReBAP(reBapFrom, reBapTo),
       fetchRZSaldo(from, to),
       fetchRedispatch(from, to),
       fetchAepSchaetzer(from, to),
       fetchActivatedAFRR(activationFrom, activationTo),
       fetchActivatedMFRR(activationFrom, activationTo),
+      fetchNRVSaldo(from, to),
+      fetchTrafficLight(from, to),
+      fetchIdAep(from, to),
+      fetchNegativePreise(from, to),
+      fetchHochrechnungSolar(from, to),
+      fetchHochrechnungWind(from, to),
     ]);
 
     const redispatchSummary = {
@@ -112,6 +122,12 @@ export async function GET(request) {
       aepSchaetzer,
       activatedAFRR,
       activatedMFRR,
+      nrvSaldo,
+      trafficLight,
+      idAep,
+      negativePreise,
+      hochrechnungSolar,
+      hochrechnungWind,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err) }, { status: 502 });

@@ -100,8 +100,48 @@ CREATE TABLE IF NOT EXISTS de_activated_mfrr (
   PRIMARY KEY (ts, zone, direction)
 );
 
--- Suivi des collectes netztransparenz (distinct de collection_log car les
--- endpoints n'ont pas tous le même statut d'accès — voir "blocked" ci-dessous).
+-- NRV-Saldo: déséquilibre système allemand (MW), 15-min. Signal cœur pour
+-- l'imbalance trading.
+CREATE TABLE IF NOT EXISTS de_nrv_saldo (
+  ts                    TIMESTAMPTZ PRIMARY KEY,
+  value_mw              NUMERIC(10, 3),
+  aep_knappheit_mw      NUMERIC(10, 3),
+  mrl_mol_abweichung_mw NUMERIC(10, 3),
+  srl_mol_abweichung_mw NUMERIC(10, 3)
+);
+
+-- TrafficLight: indicateur de tension système, 1-min.
+CREATE TABLE IF NOT EXISTS de_traffic_light (
+  ts_from   TIMESTAMPTZ PRIMARY KEY,
+  ts_to     TIMESTAMPTZ NOT NULL,
+  value     VARCHAR(20) NOT NULL
+);
+
+-- ID AEP: indice intraday du prix de compensation (précurseur du reBAP), 15-min.
+CREATE TABLE IF NOT EXISTS de_id_aep (
+  ts              TIMESTAMPTZ PRIMARY KEY,
+  value_eur_mwh   NUMERIC(10, 2)
+);
+
+-- NegativePreise: heures de prix négatifs par base horaire EEG, résolution horaire.
+CREATE TABLE IF NOT EXISTS de_negative_preise (
+  ts    TIMESTAMPTZ PRIMARY KEY,
+  h1    BOOLEAN,
+  h2    BOOLEAN,
+  h3    BOOLEAN,
+  h4    BOOLEAN,
+  h6    BOOLEAN
+);
+
+-- Hochrechnung: extrapolation temps réel de la production renouvelable par
+-- GRT (MW), 15-min. product in {Solar, Wind}.
+CREATE TABLE IF NOT EXISTS de_hochrechnung (
+  ts        TIMESTAMPTZ NOT NULL,
+  product   VARCHAR(10) NOT NULL,
+  tso       VARCHAR(20) NOT NULL,
+  value_mw  NUMERIC(10, 3),
+  PRIMARY KEY (ts, product, tso)
+);
 CREATE TABLE IF NOT EXISTS de_collection_log (
   id          SERIAL PRIMARY KEY,
   ran_at      TIMESTAMPTZ NOT NULL DEFAULT now(),

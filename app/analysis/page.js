@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ThemeToggle } from "../theme-toggle";
-import { LineChart, Line, AreaChart, Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { LineChart, Line, AreaChart, Area, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } from "recharts";
 import { berlinYesterdayISO } from "./date-helper";
 
 const MARKETS = [
@@ -410,6 +410,79 @@ export default function AnalysisPage() {
     return [...byTime.values()];
   }, [afrrChartData, mfrrChartData]);
 
+  // NRV-Saldo: déséquilibre système allemand (MW) — signal cœur pour
+  // l'imbalance trading.
+  const nrvSaldoChartData = (ntpData?.nrvSaldo || []).map((p) => ({
+    time: fmtDateTime(p.timestamp),
+    value: p.value_mw,
+  }));
+  const nrvSaldoStats = nrvSaldoChartData.length
+    ? {
+        avg: nrvSaldoChartData.reduce((s, r) => s + (r.value || 0), 0) / nrvSaldoChartData.length,
+        min: Math.min(...nrvSaldoChartData.map((r) => r.value)),
+        max: Math.max(...nrvSaldoChartData.map((r) => r.value)),
+      }
+    : null;
+
+  // TrafficLight: indicateur de tension système, 1-min. Converti en score
+  // numérique pour affichage graphique (RED_NEG=-2 ... GREEN=0 ... RED_POS=2).
+  const TRAFFIC_LIGHT_SCORE = { RED_NEG: -2, YELLOW_NEG: -1, GREEN: 0, YELLOW_POS: 1, RED_POS: 2, BLUE: 0 };
+  const TRAFFIC_LIGHT_COLOR = { RED_NEG: "#C4622D", YELLOW_NEG: "#E8C468", GREEN: "#3FA796", YELLOW_POS: "#E8C468", RED_POS: "#C4622D", BLUE: "#4A94C4" };
+  const trafficLightChartData = (ntpData?.trafficLight || []).map((p) => ({
+    time: fmtDateTime(p.from),
+    score: TRAFFIC_LIGHT_SCORE[p.value] ?? 0,
+    value: p.value,
+  }));
+  const trafficLightCurrent = ntpData?.trafficLight?.length ? ntpData.trafficLight[ntpData.trafficLight.length - 1] : null;
+
+  // ID AEP: indice intraday avancé du prix de compensation.
+  const idAepChartData = (ntpData?.idAep || []).map((p) => ({
+    time: fmtDateTime(p.timestamp),
+    value: p.value_eur_mwh,
+  }));
+  const idAepStats = idAepChartData.length
+    ? {
+        avg: idAepChartData.reduce((s, r) => s + (r.value || 0), 0) / idAepChartData.length,
+        min: Math.min(...idAepChartData.map((r) => r.value)),
+        max: Math.max(...idAepChartData.map((r) => r.value)),
+      }
+    : null;
+
+  // NegativePreise: heures de prix négatifs par base horaire EEG — compte le
+  // nombre d'heures marquées "négatif" par logique, sur la période affichée.
+  const negativePreiseCounts = ["h1", "h2", "h3", "h4", "h6"].map((k) => ({
+    label: k.replace("h", "") + "h",
+    count: (ntpData?.negativePreise || []).filter((p) => p[k]).length,
+  }));
+  const negativePreiseTotal = ntpData?.negativePreise?.length || 0;
+
+  // Hochrechnung Solar/Wind: extrapolation temps réel par GRT -> somme
+  // Allemagne pour un signal simple à lire (recoupement rapide avec les
+  // données ENTSO-E déjà affichées dans le graphique principal).
+  function sumGermany(rows) {
+    const byTs = new Map();
+    for (const r of rows || []) {
+      const { timestamp, ...rest } = r;
+      const total = Object.values(rest).reduce((s, v) => s + (v || 0), 0);
+      byTs.set(timestamp, total);
+    }
+    return [...byTs.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([ts, total]) => ({ time: fmtTime(ts), value: total }));
+  }
+  const hochrechnungSolarData = sumGermany(ntpData?.hochrechnungSolar);
+  const hochrechnungWindData = sumGermany(ntpData?.hochrechnungWind);
+  const hochrechnungChartData = useMemo(() => {
+    const byTime = new Map();
+    hochrechnungSolarData.forEach((r) => byTime.set(r.time, { time: r.time, solar: r.value }));
+    hochrechnungWindData.forEach((r) => {
+      const row = byTime.get(r.time) || { time: r.time };
+      row.wind = r.value;
+      byTime.set(r.time, row);
+    });
+    return [...byTime.values()];
+  }, [hochrechnungSolarData, hochrechnungWindData]);
+
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <header className="border-b border-[var(--mp-border)] px-6 py-4 flex items-center justify-between">
@@ -759,6 +832,156 @@ export default function AnalysisPage() {
                 </ResponsiveContainer>
               ) : (
                 <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée d&apos;activation pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">NRV-Saldo</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; system imbalance (MW) &middot; source: netztransparenz.de</p>
+                </div>
+                {nrvSaldoStats && (
+                  <div className="flex gap-4 text-right font-mono">
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{nrvSaldoStats.avg.toFixed(0)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${nrvSaldoStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{nrvSaldoStats.min.toFixed(0)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{nrvSaldoStats.max.toFixed(0)}</div></div>
+                    <RangeBadge from={ntpData.from} to={ntpData.to} />
+                  </div>
+                )}
+              </div>
+              {nrvSaldoChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={nrvSaldoChartData} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <ReferenceLine y={0} stroke="var(--mp-grid)" />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(nrvSaldoChartData.length / 8))} angle={-35} textAnchor="end" height={40} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} />
+                    <Line type="monotone" dataKey="value" stroke="#E8C468" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée NRV-Saldo pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">System Traffic Light</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; grid stress indicator, 1-min &middot; source: netztransparenz.de</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {trafficLightCurrent && (
+                    <div className="flex items-center gap-2 font-mono">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: TRAFFIC_LIGHT_COLOR[trafficLightCurrent.value] || "#666" }} />
+                      <span className="text-sm text-[var(--mp-text-2)]">{trafficLightCurrent.value}</span>
+                    </div>
+                  )}
+                  <RangeBadge from={ntpData.from} to={ntpData.to} />
+                </div>
+              </div>
+              {trafficLightChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={trafficLightChartData} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <ReferenceLine y={0} stroke="var(--mp-grid)" />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(trafficLightChartData.length / 8))} angle={-35} textAnchor="end" height={40} />
+                    <YAxis domain={[-2, 2]} ticks={[-2, -1, 0, 1, 2]} tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={30} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v, n, p) => p.payload.value} />
+                    <Line type="stepAfter" dataKey="score" stroke="#C4622D" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée Traffic Light pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">ID AEP</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; intraday-based imbalance price index &middot; source: netztransparenz.de</p>
+                </div>
+                {idAepStats && (
+                  <div className="flex gap-4 text-right font-mono">
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{idAepStats.avg.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${idAepStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{idAepStats.min.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{idAepStats.max.toFixed(2)}</div></div>
+                    <RangeBadge from={ntpData.from} to={ntpData.to} />
+                  </div>
+                )}
+              </div>
+              {idAepChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={idAepChartData} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(idAepChartData.length / 8))} angle={-35} textAnchor="end" height={40} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(2)} EUR/MWh`} />
+                    <Line type="stepAfter" dataKey="value" stroke="#4A94C4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée ID AEP pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Hochrechnung Solar &amp; Wind</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; real-time renewable extrapolation, sum of 4 TSOs (MW) &middot; source: netztransparenz.de</p>
+                </div>
+                <RangeBadge from={ntpData.from} to={ntpData.to} />
+              </div>
+              {hochrechnungChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={hochrechnungChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="solarGrad2" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#E8C468" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#E8C468" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="windGrad2" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#4A94C4" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#4A94C4" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(hochrechnungChartData.length / 8))} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                    <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+                    <Area type="monotone" dataKey="solar" name="Solar" stroke="#E8C468" strokeWidth={1.5} fill="url(#solarGrad2)" isAnimationActive={false} connectNulls />
+                    <Area type="monotone" dataKey="wind" name="Wind" stroke="#4A94C4" strokeWidth={1.5} fill="url(#windGrad2)" isAnimationActive={false} connectNulls />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée Hochrechnung pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5 lg:col-span-2">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Negative Price Hours (EEG)</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; hours flagged negative per EEG claim basis, out of {negativePreiseTotal} hours &middot; source: netztransparenz.de</p>
+                </div>
+                <RangeBadge from={ntpData.from} to={ntpData.to} />
+              </div>
+              {negativePreiseTotal > 0 ? (
+                <div className="flex gap-6 font-mono">
+                  {negativePreiseCounts.map((c) => (
+                    <div key={c.label} className="text-center">
+                      <div className="text-2xl text-amber-400">{c.count}</div>
+                      <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mt-1">{c.label} consecutive</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée Negative Preise pour cette période.</div>
               )}
             </div>
           </div>

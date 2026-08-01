@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { collectDeSeries, REALTIME_DE_SERIES } from "../../../../lib/collect-de";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 function isAuthorized(request) {
   const secret = process.env.CRON_SECRET;

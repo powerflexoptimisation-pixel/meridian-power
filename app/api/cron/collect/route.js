@@ -6,7 +6,7 @@
 // Actions — voir .github/workflows/collect-de-realtime.yml).
 import { NextResponse } from "next/server";
 import { collectCountry, DOMAINS } from "../../../../lib/entsoe";
-import { collectDeSeries, REALTIME_DE_SERIES, DELAYED_DE_SERIES } from "../../../../lib/collect-de";
+import { collectDeSeries, REALTIME_DE_SERIES, DELAYED_DE_SERIES, DAILY_ONLY_DE_SERIES } from "../../../../lib/collect-de";
 import { upsertPrices, upsertGeneration, upsertLoad, logCollection } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export async function GET(request) {
   const countries = Object.keys(DOMAINS);
   const [entsoeSettled, deSettled] = await Promise.all([
     Promise.allSettled(countries.map(collectOne)),
-    Promise.allSettled([collectDeSeries([...REALTIME_DE_SERIES, ...DELAYED_DE_SERIES])]),
+    Promise.allSettled([collectDeSeries([...REALTIME_DE_SERIES, ...DELAYED_DE_SERIES, ...DAILY_ONLY_DE_SERIES])]),
   ]);
 
   const results = {};

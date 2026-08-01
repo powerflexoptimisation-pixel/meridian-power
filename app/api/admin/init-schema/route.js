@@ -75,6 +75,37 @@ const STATEMENTS = [
     blocked     BOOLEAN NOT NULL DEFAULT false,
     warning     TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS de_nrv_saldo (
+    ts                    TIMESTAMPTZ PRIMARY KEY,
+    value_mw              NUMERIC(10, 3),
+    aep_knappheit_mw      NUMERIC(10, 3),
+    mrl_mol_abweichung_mw NUMERIC(10, 3),
+    srl_mol_abweichung_mw NUMERIC(10, 3)
+  )`,
+  `CREATE TABLE IF NOT EXISTS de_traffic_light (
+    ts_from   TIMESTAMPTZ PRIMARY KEY,
+    ts_to     TIMESTAMPTZ NOT NULL,
+    value     VARCHAR(20) NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS de_id_aep (
+    ts              TIMESTAMPTZ PRIMARY KEY,
+    value_eur_mwh   NUMERIC(10, 2)
+  )`,
+  `CREATE TABLE IF NOT EXISTS de_negative_preise (
+    ts    TIMESTAMPTZ PRIMARY KEY,
+    h1    BOOLEAN,
+    h2    BOOLEAN,
+    h3    BOOLEAN,
+    h4    BOOLEAN,
+    h6    BOOLEAN
+  )`,
+  `CREATE TABLE IF NOT EXISTS de_hochrechnung (
+    ts        TIMESTAMPTZ NOT NULL,
+    product   VARCHAR(10) NOT NULL,
+    tso       VARCHAR(20) NOT NULL,
+    value_mw  NUMERIC(10, 3),
+    PRIMARY KEY (ts, product, tso)
+  )`,
 ];
 
 export async function GET(request) {
