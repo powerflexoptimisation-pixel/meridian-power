@@ -33,17 +33,17 @@ async function collectOne(country) {
   // capturer aussi bien la prévision fraîchement publiée aujourd'hui pour
   // demain que celle d'hier pour aujourd'hui, désormais comparable au réalisé.
   let nForecast = 0;
+  let forecastError = null;
   try {
     const forecastFrom = berlinMidnightUTC(1);
     const forecastTo = berlinMidnightUTC(-1);
     const forecast = await fetchWindSolarForecast(country, forecastFrom, forecastTo);
     nForecast = await upsertWindSolarForecast(country, forecast.points);
   } catch (err) {
-    // Non-bloquant: une prévision manquante ne doit pas faire échouer la
-    // collecte des données réalisées.
+    forecastError = String(err.message || err);
   }
 
-  return { prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad, forecast_rows_stored: nForecast, warnings: data.warnings };
+  return { prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad, forecast_rows_stored: nForecast, forecast_error: forecastError, warnings: data.warnings };
 }
 
 export async function GET(request) {
