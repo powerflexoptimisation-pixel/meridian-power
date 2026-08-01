@@ -264,6 +264,59 @@ export default function AnalysisPage() {
     : null;
   const redispatchSummary = ntpData?.redispatchSummary;
 
+  // AEP-Schätzer: proxy temps réel du reBAP (publié en continu, sans le
+  // délai qualitätsgesichert), utile pour voir la tendance du prix de
+  // compensation avant la publication officielle du reBAP.
+  const aepChartData = (ntpData?.aepSchaetzer || []).map((p) => ({
+    time: fmtTime(p.timestamp),
+    aep: p.aep_schaetzer_eur_mwh,
+  }));
+  const aepStats = aepChartData.length
+    ? {
+        avg: aepChartData.reduce((s, r) => s + (r.aep || 0), 0) / aepChartData.length,
+        min: Math.min(...aepChartData.map((r) => r.aep)),
+        max: Math.max(...aepChartData.map((r) => r.aep)),
+      }
+    : null;
+
+  // RZ-Saldo: solde de la zone de réglage par GRT (MW) — une ligne par TSO.
+  const rzSaldoChartData = (ntpData?.rzSaldo || []).map((p) => ({
+    time: fmtTime(p.timestamp),
+    "50Hertz": p["50Hertz"],
+    Amprion: p.Amprion,
+    "TenneT TSO": p["TenneT TSO"],
+    TransnetBW: p.TransnetBW,
+  }));
+  const RZ_TSO_COLORS = { "50Hertz": "#C4622D", Amprion: "#3FA796", "TenneT TSO": "#8B6FC9", TransnetBW: "#4A94C4" };
+
+  // Activations aFRR/mFRR: format "long" (ts, zone, direction, value_mw) ->
+  // on retient la zone Allemagne et on calcule le net (positif - négatif)
+  // par créneau, pour une lecture directe de l'activation nette.
+  function deriveNetActivation(rows) {
+    const byTs = new Map();
+    for (const r of rows || []) {
+      if (r.zone !== "Deutschland") continue;
+      const entry = byTs.get(r.timestamp) || { timestamp: r.timestamp, net: 0 };
+      entry.net += r.direction === "positiv" ? r.value_mw : -r.value_mw;
+      byTs.set(r.timestamp, entry);
+    }
+    return [...byTs.values()]
+      .sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1))
+      .map((r) => ({ time: fmtTime(r.timestamp), net: r.net }));
+  }
+  const afrrChartData = deriveNetActivation(ntpData?.activatedAFRR);
+  const mfrrChartData = deriveNetActivation(ntpData?.activatedMFRR);
+  const activationChartData = useMemo(() => {
+    const byTime = new Map();
+    afrrChartData.forEach((r) => byTime.set(r.time, { time: r.time, afrr: r.net }));
+    mfrrChartData.forEach((r) => {
+      const row = byTime.get(r.time) || { time: r.time };
+      row.mfrr = r.net;
+      byTime.set(r.time, row);
+    });
+    return [...byTime.values()];
+  }, [afrrChartData, mfrrChartData]);
+
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <header className="border-b border-[var(--mp-border)] px-6 py-4 flex items-center justify-between">
@@ -485,6 +538,58 @@ export default function AnalysisPage() {
             </div>
 
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">AEP-Schätzer</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; real-time reBAP estimate &middot; source: netztransparenz.de</p>
+                </div>
+                {aepStats && (
+                  <div className="flex gap-4 text-right font-mono">
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{aepStats.avg.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${aepStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{aepStats.min.toFixed(2)}</div></div>
+                    <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{aepStats.max.toFixed(2)}</div></div>
+                  </div>
+                )}
+              </div>
+              {aepChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={aepChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(aepChartData.length / 8))} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(2)} EUR/MWh`} />
+                    <Line type="stepAfter" dataKey="aep" stroke="#4A94C4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée AEP-Schätzer pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
+              <div className="mb-4">
+                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">RZ-Saldo</h3>
+                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; control area balance by TSO (MW) &middot; source: netztransparenz.de</p>
+              </div>
+              {rzSaldoChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={rzSaldoChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(rzSaldoChartData.length / 8))} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${v.toFixed(0)}`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} />
+                    <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+                    {Object.keys(RZ_TSO_COLORS).map((tso) => (
+                      <Line key={tso} type="monotone" dataKey={tso} stroke={RZ_TSO_COLORS[tso]} strokeWidth={1.2} dot={false} isAnimationActive={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée RZ-Saldo pour cette période.</div>
+              )}
+            </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
               <div className="mb-4">
                 <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Redispatch</h3>
                 <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; grid congestion measures &middot; source: netztransparenz.de</p>
@@ -510,6 +615,28 @@ export default function AnalysisPage() {
                 <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune mesure de redispatch pour cette période.</div>
               )}
             </div>
+
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5 lg:col-span-2">
+              <div className="mb-4">
+                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Activated Balancing Capacity — Net (Germany)</h3>
+                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">aFRR (SRL) &amp; mFRR (MRL), positive − negative &middot; qualitätsgesichert &middot; source: netztransparenz.de</p>
+              </div>
+              {activationChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={activationChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(activationChartData.length / 12))} />
+                    <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v) => `${v.toFixed(0)}MW`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} />
+                    <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
+                    <Line type="monotone" dataKey="afrr" name="aFRR net" stroke="#3FA796" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+                    <Line type="monotone" dataKey="mfrr" name="mFRR net" stroke="#8B6FC9" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-xs text-[var(--mp-text-6)] font-mono text-center py-8">Aucune donnée d&apos;activation pour cette période.</div>
+              )}
+            </div>
           </div>
         )}
 
@@ -521,7 +648,7 @@ export default function AnalysisPage() {
       </main>
 
       <footer className="px-6 py-4 border-t border-[var(--mp-border)] text-[10px] font-mono text-[var(--mp-text-6)]">
-        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data. Day-ahead forecast comparison available in historical view. reBAP/Redispatch: Germany only, source netztransparenz.de.
+        Residual load = Consumption − (Wind + PV). Historical range: max 7 days (15-min resolution), from stored data. Day-ahead forecast comparison available in historical view. reBAP/AEP-Schätzer/RZ-Saldo/aFRR/mFRR/Redispatch: Germany only, source netztransparenz.de.
       </footer>
     </div>
   );
