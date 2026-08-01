@@ -26,6 +26,10 @@ export async function GET(request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const de = await collectDeSeries(REALTIME_DE_SERIES);
-  return NextResponse.json({ ran_at: new Date().toISOString(), de });
+  try {
+    const de = await collectDeSeries(REALTIME_DE_SERIES);
+    return NextResponse.json({ ran_at: new Date().toISOString(), de });
+  } catch (err) {
+    return NextResponse.json({ error: String(err.message || err), stack: err.stack }, { status: 500 });
+  }
 }
