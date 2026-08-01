@@ -114,6 +114,13 @@ const STATEMENTS = [
     PRIMARY KEY (country, ts, fuel_type)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_wsforecast_country_ts ON market_wind_solar_forecast (country, ts)`,
+  `CREATE TABLE IF NOT EXISTS market_load_forecast (
+    country VARCHAR(2) NOT NULL,
+    ts TIMESTAMPTZ NOT NULL,
+    load_mw NUMERIC(10, 2) NOT NULL,
+    PRIMARY KEY (country, ts)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_load_forecast_country_ts ON market_load_forecast (country, ts)`,
 ];
 
 export async function GET(request) {

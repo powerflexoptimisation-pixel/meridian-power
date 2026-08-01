@@ -5,10 +5,10 @@
 // /api/cron/collect-de-realtime (appelé par un scheduler externe, GitHub
 // Actions — voir .github/workflows/collect-de-realtime.yml).
 import { NextResponse } from "next/server";
-import { collectCountry, DOMAINS, fetchWindSolarForecast } from "../../../../lib/entsoe";
+import { collectCountry, DOMAINS, fetchWindSolarForecast, fetchLoadForecast } from "../../../../lib/entsoe";
 import { berlinMidnightUTC } from "../../../../lib/tz";
 import { collectDeSeries, REALTIME_DE_SERIES, DELAYED_DE_SERIES, DAILY_ONLY_DE_SERIES } from "../../../../lib/collect-de";
-import { upsertPrices, upsertGeneration, upsertLoad, upsertWindSolarForecast, logCollection } from "../../../../lib/db";
+import { upsertPrices, upsertGeneration, upsertLoad, upsertWindSolarForecast, upsertLoadForecast, logCollection } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,7 +43,25 @@ async function collectOne(country) {
     forecastError = String(err.message || err);
   }
 
-  return { prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad, forecast_rows_stored: nForecast, forecast_error: forecastError, warnings: data.warnings };
+  // Prévision de consommation day-ahead — même fenêtre élargie que la
+  // prévision éolien/solaire ci-dessus (hier->demain).
+  let nLoadForecast = 0;
+  let loadForecastError = null;
+  try {
+    const forecastFrom = berlinMidnightUTC(1);
+    const forecastTo = berlinMidnightUTC(-1);
+    const loadForecast = await fetchLoadForecast(country, forecastFrom, forecastTo);
+    nLoadForecast = await upsertLoadForecast(country, loadForecast.points);
+  } catch (err) {
+    loadForecastError = String(err.message || err);
+  }
+
+  return {
+    prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad,
+    forecast_rows_stored: nForecast, forecast_error: forecastError,
+    load_forecast_rows_stored: nLoadForecast, load_forecast_error: loadForecastError,
+    warnings: data.warnings,
+  };
 }
 
 export async function GET(request) {
