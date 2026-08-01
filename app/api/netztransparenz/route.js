@@ -43,24 +43,29 @@ export async function GET(request) {
     return NextResponse.json({ error: "Plage limitée à 7 jours." }, { status: 400 });
   }
 
-  // reBAP/aFRR/mFRR sont "qualitätsgesichert" et publiées avec ~10-14 jours
-  // de retard. En mode live (pas de date explicite demandée), la fenêtre
-  // "hier" serait quasi systématiquement vide pour ces 3 séries — on élargit
-  // donc à J-21..J-3 pour qu'elles affichent réellement quelque chose par
-  // défaut. En mode historique (date explicite choisie par l'utilisateur),
-  // on respecte le jour demandé tel quel (peut être vide si trop récent,
-  // même logique que le comportement reBAP existant).
-  const delayedFrom = isLive ? new Date(Date.now() - 21 * 24 * 3600 * 1000) : from;
-  const delayedTo = isLive ? new Date(Date.now() - 3 * 24 * 3600 * 1000) : to;
+  // reBAP/aFRR/mFRR sont "qualitätsgesichert" et publiées avec retard. En
+  // mode live (pas de date explicite demandée), la fenêtre "hier" serait
+  // quasi systématiquement vide pour ces 3 séries — on élargit donc pour
+  // qu'elles affichent réellement quelque chose par défaut. Délais observés
+  // empiriquement (pas documentés précisément par netztransparenz.de):
+  // reBAP ~10-14 jours, aFRR/mFRR significativement plus long (~5-6
+  // semaines) — d'où deux fenêtres différentes. En mode historique (date
+  // explicite choisie par l'utilisateur), on respecte le jour demandé tel
+  // quel (peut être vide si trop récent, même logique que le comportement
+  // reBAP existant).
+  const reBapFrom = isLive ? new Date(Date.now() - 21 * 24 * 3600 * 1000) : from;
+  const reBapTo = isLive ? new Date(Date.now() - 3 * 24 * 3600 * 1000) : to;
+  const activationFrom = isLive ? new Date(Date.now() - 60 * 24 * 3600 * 1000) : from;
+  const activationTo = isLive ? new Date(Date.now() - 30 * 24 * 3600 * 1000) : to;
 
   try {
     const [reBAP, rzSaldo, redispatch, aepSchaetzer, activatedAFRR, activatedMFRR] = await Promise.all([
-      fetchReBAP(delayedFrom, delayedTo),
+      fetchReBAP(reBapFrom, reBapTo),
       fetchRZSaldo(from, to),
       fetchRedispatch(from, to),
       fetchAepSchaetzer(from, to),
-      fetchActivatedAFRR(delayedFrom, delayedTo),
-      fetchActivatedMFRR(delayedFrom, delayedTo),
+      fetchActivatedAFRR(activationFrom, activationTo),
+      fetchActivatedMFRR(activationFrom, activationTo),
     ]);
 
     const redispatchSummary = {

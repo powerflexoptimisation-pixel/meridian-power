@@ -50,12 +50,17 @@ const DE_UPSERTERS = {
 
 // redispatch/aep_schaetzer/rz_saldo sont publiés en continu ("betrieblich")
 // -> fenêtre 24h glissante suffit. reBAP/aFRR/mFRR sont "qualitätsgesichert"
-// et publiés avec ~10-14 jours de retard (voir doc netztransparenz.de) : si
-// on ne regardait que les dernières 24h, on ne verrait JAMAIS les nouvelles
-// données au moment où elles sont enfin publiées. On interroge donc pour ces
-// 3 séries une fenêtre décalée en arrière (J-21 à J-3) qui capte de façon
-// fiable les données fraîchement publiées, quel que soit le délai exact.
-const QUALITAETSGESICHERT_SERIES = new Set(["rebap", "activated_afrr", "activated_mfrr"]);
+// et publiés avec retard (voir doc netztransparenz.de) : si on ne regardait
+// que les dernières 24h, on ne verrait JAMAIS les nouvelles données au
+// moment où elles sont enfin publiées. Délais observés empiriquement (pas
+// documentés précisément par netztransparenz.de): reBAP ~10-14 jours,
+// aFRR/mFRR significativement plus long (~5-6 semaines) — d'où deux
+// fenêtres différentes ci-dessous.
+const DELAYED_WINDOWS = {
+  rebap: { fromDays: 21, toDays: 3 },
+  activated_afrr: { fromDays: 60, toDays: 30 },
+  activated_mfrr: { fromDays: 60, toDays: 30 },
+};
 
 // Collecte les 6 séries netztransparenz.de, chacune avec la fenêtre adaptée
 // à son cycle de publication (voir commentaire ci-dessus). Un seul appel
@@ -64,12 +69,12 @@ const QUALITAETSGESICHERT_SERIES = new Set(["rebap", "activated_afrr", "activate
 async function collectDeAndStore() {
   const now = new Date();
   const realtimeFrom = new Date(now.getTime() - 24 * 3600 * 1000);
-  const delayedFrom = new Date(now.getTime() - 21 * 24 * 3600 * 1000);
-  const delayedTo = new Date(now.getTime() - 3 * 24 * 3600 * 1000);
 
   const summary = {};
   for (const series of Object.keys(DE_FETCHERS)) {
-    const [from, to] = QUALITAETSGESICHERT_SERIES.has(series) ? [delayedFrom, delayedTo] : [realtimeFrom, now];
+    const delayed = DELAYED_WINDOWS[series];
+    const from = delayed ? new Date(now.getTime() - delayed.fromDays * 24 * 3600 * 1000) : realtimeFrom;
+    const to = delayed ? new Date(now.getTime() - delayed.toDays * 24 * 3600 * 1000) : now;
     try {
       const data = await DE_FETCHERS[series](from, to);
       const stored = await DE_UPSERTERS[series](data);
