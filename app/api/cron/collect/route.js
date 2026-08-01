@@ -43,11 +43,10 @@ async function collectDeAndStore() {
   const from = new Date(to.getTime() - 24 * 3600 * 1000);
   const results = await collectDe(from, to);
   const summary = {};
-  for (const [series, { data, blocked, error }] of Object.entries(results)) {
+  for (const [series, { data, error }] of Object.entries(results)) {
     const stored = error ? 0 : await DE_UPSERTERS[series](data);
-    const warning = error || (blocked ? "endpoint hors scope OAuth (rôle NrvSaldo requis)" : null);
-    await logDeCollection(series, stored, blocked, warning);
-    summary[series] = { stored, blocked, error };
+    await logDeCollection(series, stored, error);
+    summary[series] = { stored, error };
   }
   return summary;
 }

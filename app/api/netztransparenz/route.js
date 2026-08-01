@@ -37,15 +37,11 @@ export async function GET(request) {
   }
 
   try {
-    const [reBAPRes, rzSaldoRes, redispatchRes] = await Promise.all([
+    const [reBAP, rzSaldo, redispatch] = await Promise.all([
       fetchReBAP(from, to),
       fetchRZSaldo(from, to),
       fetchRedispatch(from, to),
     ]);
-
-    const reBAP = reBAPRes.data;
-    const rzSaldo = rzSaldoRes.data;
-    const redispatch = redispatchRes.data;
 
     const redispatchSummary = {
       count: redispatch.length,
@@ -61,9 +57,7 @@ export async function GET(request) {
       from: from.toISOString(),
       to: to.toISOString(),
       reBAP,
-      reBAPBlocked: reBAPRes.notFound,
       rzSaldo,
-      rzSaldoBlocked: rzSaldoRes.notFound,
       redispatch,
       redispatchSummary,
     });
