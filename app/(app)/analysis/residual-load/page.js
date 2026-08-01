@@ -21,7 +21,7 @@ function deriveLiveSeries(loadPoints, genPoints) {
     const gen = (genPoints || []).find((g) => g.timestamp === lp.timestamp) || {};
     const windPv = WIND_PV.reduce((s, f) => s + (gen[f] || 0), 0);
     const otherRenew = OTHER_RENEWABLES.reduce((s, f) => s + (gen[f] || 0), 0);
-    return { timestamp: lp.timestamp, consumption: lp.value, windPv, otherRenew, residualLoad: lp.value - windPv - otherRenew };
+    return { timestamp: lp.timestamp, consumption: lp.load_mw, windPv, otherRenew, residualLoad: lp.load_mw - windPv - otherRenew };
   });
 }
 function seriesStats(series, key) {

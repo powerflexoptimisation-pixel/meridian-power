@@ -98,7 +98,7 @@ export default function GridRealtimePage() {
 
   const rzSaldoChartData = (ntpData?.rzSaldo || []).map((p) => ({ time: fmtTime(p.timestamp), "50Hertz": p["50Hertz"], Amprion: p.Amprion, "TenneT TSO": p["TenneT TSO"], TransnetBW: p.TransnetBW }));
 
-  const aepChartData = (ntpData?.aepSchaetzer || []).map((p) => ({ time: fmtTime(p.timestamp), aep: p.aep_schaetzer_eur_mwh }));
+  const aepChartData = (ntpData?.aepSchaetzer || []).map((p) => ({ time: fmtDateTime(p.timestamp), aep: p.aep_schaetzer_eur_mwh }));
   const aepStats = aepChartData.length
     ? { avg: aepChartData.reduce((s, r) => s + (r.aep || 0), 0) / aepChartData.length, min: Math.min(...aepChartData.map((r) => r.aep)), max: Math.max(...aepChartData.map((r) => r.aep)) }
     : null;
@@ -240,10 +240,10 @@ export default function GridRealtimePage() {
                 <RangeBadge from={ntpData.from} to={ntpData.to} />
               </div>
               {aepChartData.length > 0 || idAepChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                    <XAxis dataKey="time" type="category" allowDuplicatedCategory={false} tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} />
+                    <XAxis dataKey="time" type="category" allowDuplicatedCategory={false} tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(Math.max(aepChartData.length, idAepChartData.length) / 8))} angle={-35} textAnchor="end" height={40} />
                     <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
                     <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(2)} EUR/MWh`} />
                     <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
