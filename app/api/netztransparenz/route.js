@@ -1,8 +1,9 @@
 // app/api/netztransparenz/route.js
-// Usage: /api/netztransparenz?from=2026-06-24&to=2026-06-24
-// (from/to omis -> mode live : hier pour les séries temps réel, fenêtre
-// élargie J-21 à J-3 pour les séries qualitätsgesichert retardées — voir
-// commentaire plus bas)
+// Usage:
+//   /api/netztransparenz?from=2026-06-24&to=2026-06-24            (jour, 00:00-24:00 Berlin)
+//   /api/netztransparenz?fromDt=2026-06-24T08:00&toDt=2026-07-10T20:00  (plage précise, priorité sur from/to)
+// (aucun paramètre -> mode live : hier pour les séries temps réel, fenêtre
+// élargie pour les séries qualitätsgesichert retardées — voir plus bas)
 // Données spécifiques à l'Allemagne (source: les 4 GRT allemands via
 // netztransparenz.de), récupérées à la volée (pas stockées en base pour ce
 // endpoint — la persistence Postgres est gérée séparément par le cron).
@@ -14,7 +15,7 @@ import {
   fetchReBAP, fetchRZSaldo, fetchRedispatch, fetchAepSchaetzer,
   fetchActivatedAFRR, fetchActivatedMFRR,
 } from "../../../lib/netztransparenz";
-import { berlinMidnightUTC, berlinDateToUTC } from "../../../lib/tz";
+import { berlinMidnightUTC, berlinDateToUTC, berlinDateTimeToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,35 +25,47 @@ export const maxDuration = 30;
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
 
+  const fromDtParam = searchParams.get("fromDt");
+  const toDtParam = searchParams.get("toDt");
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
+
+  // Plage précise (datetime-local, saisie par l'utilisateur depuis le
+  // dashboard) : prioritaire sur from/to (jour entier) et sur le calcul
+  // automatique des fenêtres qualitätsgesichert — l'utilisateur reprend
+  // explicitement la main sur toutes les séries.
+  const isCustomRange = !!(fromDtParam && toDtParam);
+  const isLive = !isCustomRange && !(fromParam && toParam);
+
   let from, to;
-  const isLive = !(fromParam && toParam);
-  if (!isLive) {
+  if (isCustomRange) {
+    from = berlinDateTimeToUTC(fromDtParam);
+    to = berlinDateTimeToUTC(toDtParam);
+  } else if (!isLive) {
     from = berlinDateToUTC(fromParam);
     to = new Date(berlinDateToUTC(toParam).getTime() + 24 * 3600 * 1000);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
-      return NextResponse.json({ error: "Plage from/to invalide (format attendu: YYYY-MM-DD)." }, { status: 400 });
-    }
   } else {
     to = berlinMidnightUTC(0);
     from = berlinMidnightUTC(1);
   }
-
-  if (to.getTime() - from.getTime() > 8 * 24 * 3600 * 1000) {
-    return NextResponse.json({ error: "Plage limitée à 7 jours." }, { status: 400 });
+  if (Number.isNaN(from?.getTime()) || Number.isNaN(to?.getTime()) || from >= to) {
+    return NextResponse.json({ error: "Plage de dates invalide." }, { status: 400 });
   }
 
-  // reBAP/aFRR/mFRR sont "qualitätsgesichert" et publiées avec retard. En
-  // mode live (pas de date explicite demandée), la fenêtre "hier" serait
-  // quasi systématiquement vide pour ces 3 séries — on élargit donc pour
-  // qu'elles affichent réellement quelque chose par défaut. Délais observés
-  // empiriquement (pas documentés précisément par netztransparenz.de):
-  // reBAP ~10-14 jours, aFRR/mFRR significativement plus long (~5-6
-  // semaines) — d'où deux fenêtres différentes. En mode historique (date
-  // explicite choisie par l'utilisateur), on respecte le jour demandé tel
-  // quel (peut être vide si trop récent, même logique que le comportement
-  // reBAP existant).
+  const maxRangeDays = isCustomRange ? 120 : 8;
+  if (to.getTime() - from.getTime() > maxRangeDays * 24 * 3600 * 1000) {
+    return NextResponse.json({ error: `Plage limitée à ${maxRangeDays} jours.` }, { status: 400 });
+  }
+
+  // reBAP/aFRR/mFRR sont "qualitätsgesichert" et publiées avec retard. Si
+  // l'utilisateur a choisi une plage précise (isCustomRange), on la respecte
+  // telle quelle pour TOUTES les séries — c'est le but de ce contrôle
+  // (pouvoir aller chercher, par ex., "il y a 6 semaines" où ces séries ont
+  // effectivement des données). En mode live (aucune plage demandée), la
+  // fenêtre "hier" serait quasi systématiquement vide pour ces 3 séries — on
+  // élargit donc automatiquement. Délais observés empiriquement (pas
+  // documentés précisément par netztransparenz.de): reBAP ~10-14 jours,
+  // aFRR/mFRR significativement plus long (~5-6 semaines).
   const reBapFrom = isLive ? new Date(Date.now() - 21 * 24 * 3600 * 1000) : from;
   const reBapTo = isLive ? new Date(Date.now() - 3 * 24 * 3600 * 1000) : to;
   const activationFrom = isLive ? new Date(Date.now() - 60 * 24 * 3600 * 1000) : from;
@@ -81,6 +94,10 @@ export async function GET(request) {
     return NextResponse.json({
       from: from.toISOString(),
       to: to.toISOString(),
+      reBapFrom: reBapFrom.toISOString(),
+      reBapTo: reBapTo.toISOString(),
+      activationFrom: activationFrom.toISOString(),
+      activationTo: activationTo.toISOString(),
       reBAP,
       rzSaldo,
       redispatch,

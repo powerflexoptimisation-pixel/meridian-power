@@ -108,6 +108,68 @@ function StatCard({ label, color, stats, current, isLive }) {
   );
 }
 
+function fmtBadge(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+}
+
+// Affiché en haut de chaque graphique: la plage réelle de données affichée
+// (from -> to, heure de Berlin). Purement informatif — le changement de
+// plage se fait via les contrôles globaux (sélecteur de date en haut de
+// page) ou, pour la section Allemagne, via le DateRangeControl dédié.
+function RangeBadge({ from, to }) {
+  return (
+    <div className="text-[10px] font-mono text-[var(--mp-text-6)] whitespace-nowrap">
+      {fmtBadge(from)} &rarr; {fmtBadge(to)}
+    </div>
+  );
+}
+
+// Contrôle éditable de plage date+heure, utilisé pour la section
+// netztransparenz.de. `effectiveFrom`/`effectiveTo` = plage réellement
+// utilisée par le backend (auto ou personnalisée) ; `onApply(from, to)` /
+// `onReset()` remontent le choix de l'utilisateur au composant parent.
+function DateRangeControl({ effectiveFrom, effectiveTo, draft, onDraftChange, onApply, onReset, isCustom }) {
+  return (
+    <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] px-4 py-3 flex flex-wrap items-center gap-3">
+      <span className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide font-mono">Germany data range:</span>
+      <div className="flex items-center gap-1.5 text-xs font-mono">
+        <span className="text-[var(--mp-text-5)]">From</span>
+        <input
+          type="datetime-local"
+          value={draft.from}
+          onChange={(e) => onDraftChange({ ...draft, from: e.target.value })}
+          className="bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+        />
+        <span className="text-[var(--mp-text-5)]">To</span>
+        <input
+          type="datetime-local"
+          value={draft.to}
+          onChange={(e) => onDraftChange({ ...draft, to: e.target.value })}
+          className="bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+        />
+      </div>
+      <button
+        onClick={onApply}
+        disabled={!draft.from || !draft.to}
+        className="px-2 py-1 text-xs font-mono border border-[var(--mp-border)] text-[var(--mp-text-4)] hover:border-amber-400 hover:text-amber-400 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Apply
+      </button>
+      {isCustom && (
+        <button onClick={onReset} className="px-2 py-1 text-xs font-mono border border-[var(--mp-border)] text-[var(--mp-text-5)] hover:border-amber-400 hover:text-amber-400">
+          ● Auto
+        </button>
+      )}
+      <span className="text-[10px] font-mono text-[var(--mp-text-6)] ml-auto">
+        Effective: {fmtBadge(effectiveFrom)} &rarr; {fmtBadge(effectiveTo)}
+      </span>
+    </div>
+  );
+}
+
+
 export default function AnalysisPage() {
   const [activeMarket, setActiveMarket] = useState("DE");
   const [viewDate, setViewDate] = useState(null); // null = live
@@ -117,6 +179,12 @@ export default function AnalysisPage() {
   const [ntpData, setNtpData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Plage personnalisée pour les graphiques netztransparenz.de (reBAP,
+  // AEP-Schätzer, RZ-Saldo, Redispatch, aFRR/mFRR). null = calcul
+  // automatique (voir /api/netztransparenz). Valeurs au format
+  // datetime-local ("YYYY-MM-DDTHH:mm"), interprétées en heure de Berlin.
+  const [deRange, setDeRange] = useState(null);
+  const [deRangeDraft, setDeRangeDraft] = useState({ from: "", to: "" });
 
   const isLive = !viewDate;
 
@@ -182,24 +250,32 @@ export default function AnalysisPage() {
     return () => { cancelled = true; };
   }, [activeMarket, viewDate, isLive]);
 
-  // Données netztransparenz.de (reBAP, RZ-Saldo, redispatch) — spécifiques à
-  // l'Allemagne, donc uniquement chargées quand DE est le marché actif.
+  // Données netztransparenz.de (reBAP, AEP-Schätzer, RZ-Saldo, Redispatch,
+  // aFRR/mFRR) — spécifiques à l'Allemagne, donc uniquement chargées quand DE
+  // est le marché actif. deRange (si défini par l'utilisateur) prend le pas
+  // sur le jour sélectionné / le mode live.
   useEffect(() => {
     if (activeMarket !== "DE") { setNtpData(null); return; }
     let cancelled = false;
     const ntpParams = new URLSearchParams();
-    if (!isLive) {
+    if (deRange) {
+      ntpParams.set("fromDt", deRange.from);
+      ntpParams.set("toDt", deRange.to);
+    } else if (!isLive) {
       ntpParams.set("from", viewDate);
       ntpParams.set("to", viewDate);
     }
     fetch(`/api/netztransparenz?${ntpParams.toString()}`)
       .then((r) => r.json())
       .then((json) => {
-        if (!cancelled && !json.error) setNtpData(json);
+        if (!cancelled) {
+          if (json.error) setError(json.error);
+          else setNtpData(json);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [activeMarket, viewDate, isLive]);
+  }, [activeMarket, viewDate, isLive, deRange]);
 
   const series = useMemo(() => {
     if (isLive) {
@@ -260,6 +336,13 @@ export default function AnalysisPage() {
   const totalNetAvg = flowsChartData.length
     ? flowsChartData.reduce((s, r) => s + r.total, 0) / flowsChartData.length
     : 0;
+
+  // Plages from/to réelles des données affichées, pour les badges en haut de
+  // chaque graphique.
+  const seriesFrom = series.length ? series[0].timestamp : null;
+  const seriesTo = series.length ? series[series.length - 1].timestamp : null;
+  const flowsFrom = flowsChartData.length ? flowsChartData[0].key : null;
+  const flowsTo = flowsChartData.length ? flowsChartData[flowsChartData.length - 1].key : null;
 
   const reBapChartData = (ntpData?.reBAP || []).map((p) => ({
     time: fmtDateTime(p.timestamp),
@@ -398,16 +481,19 @@ export default function AnalysisPage() {
                 {market.name} &middot; {isLive ? "today (live)" : viewDate} &middot; renewables cover {renewShareOfLoad.toFixed(1)}% of avg load
               </p>
             </div>
-            {forecastAccuracy && forecastAccuracy.n_points > 0 && (
-              <div className="text-right font-mono">
-                <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Forecast error (day-ahead)</div>
-                <div className="text-sm text-[var(--mp-text-2)]">
-                  {forecastAccuracy.mape_pct.toFixed(1)}% <span className="text-[var(--mp-text-6)] text-xs">MAPE</span>
-                  <span className="mx-1 text-[var(--mp-text-6)]">&middot;</span>
-                  {(forecastAccuracy.mae_mw / 1000).toFixed(2)}GW <span className="text-[var(--mp-text-6)] text-xs">MAE</span>
+            <div className="flex items-start gap-4">
+              {forecastAccuracy && forecastAccuracy.n_points > 0 && (
+                <div className="text-right font-mono">
+                  <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Forecast error (day-ahead)</div>
+                  <div className="text-sm text-[var(--mp-text-2)]">
+                    {forecastAccuracy.mape_pct.toFixed(1)}% <span className="text-[var(--mp-text-6)] text-xs">MAPE</span>
+                    <span className="mx-1 text-[var(--mp-text-6)]">&middot;</span>
+                    {(forecastAccuracy.mae_mw / 1000).toFixed(2)}GW <span className="text-[var(--mp-text-6)] text-xs">MAE</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              <RangeBadge from={seriesFrom} to={seriesTo} />
+            </div>
           </div>
           <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
@@ -434,7 +520,10 @@ export default function AnalysisPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-            <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-4">Consumption</h3>
+            <div className="flex items-baseline justify-between mb-4">
+              <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Consumption</h3>
+              <RangeBadge from={seriesFrom} to={seriesTo} />
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                 <defs>
@@ -453,7 +542,10 @@ export default function AnalysisPage() {
           </div>
 
           <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-            <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-4">Other Renewables (Hydro, Biomass, Geothermal...)</h3>
+            <div className="flex items-baseline justify-between mb-4">
+              <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Other Renewables (Hydro, Biomass, Geothermal...)</h3>
+              <RangeBadge from={seriesFrom} to={seriesTo} />
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                 <defs>
@@ -487,6 +579,7 @@ export default function AnalysisPage() {
                   {totalNetAvg >= 0 ? "+" : ""}{(totalNetAvg / 1000).toFixed(2)}GW
                   <span className="text-xs text-[var(--mp-text-6)] font-normal ml-1">{totalNetAvg >= 0 ? "net exporter" : "net importer"}</span>
                 </div>
+                <div className="mt-1"><RangeBadge from={flowsFrom} to={flowsTo} /></div>
               </div>
             </div>
             <div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-[var(--mp-border)]">
@@ -517,6 +610,16 @@ export default function AnalysisPage() {
         )}
 
         {activeMarket === "DE" && ntpData && (
+          <>
+          <DateRangeControl
+            effectiveFrom={ntpData.from}
+            effectiveTo={ntpData.to}
+            draft={deRangeDraft}
+            onDraftChange={setDeRangeDraft}
+            onApply={() => deRangeDraft.from && deRangeDraft.to && setDeRange({ ...deRangeDraft })}
+            onReset={() => { setDeRange(null); setDeRangeDraft({ from: "", to: "" }); }}
+            isCustom={!!deRange}
+          />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
               <div className="flex items-baseline justify-between mb-4">
@@ -529,6 +632,7 @@ export default function AnalysisPage() {
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{reBapStats.avg.toFixed(2)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${reBapStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{reBapStats.min.toFixed(2)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{reBapStats.max.toFixed(2)}</div></div>
+                    <RangeBadge from={ntpData.reBapFrom} to={ntpData.reBapTo} />
                   </div>
                 )}
               </div>
@@ -558,6 +662,7 @@ export default function AnalysisPage() {
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{aepStats.avg.toFixed(2)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Min</div><div className={`text-sm ${aepStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{aepStats.min.toFixed(2)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Max</div><div className="text-sm text-amber-400">{aepStats.max.toFixed(2)}</div></div>
+                    <RangeBadge from={ntpData.from} to={ntpData.to} />
                   </div>
                 )}
               </div>
@@ -577,9 +682,12 @@ export default function AnalysisPage() {
             </div>
 
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-              <div className="mb-4">
-                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">RZ-Saldo</h3>
-                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; control area balance by TSO (MW) &middot; source: netztransparenz.de</p>
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">RZ-Saldo</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; control area balance by TSO (MW) &middot; source: netztransparenz.de</p>
+                </div>
+                <RangeBadge from={ntpData.from} to={ntpData.to} />
               </div>
               {rzSaldoChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
@@ -600,9 +708,12 @@ export default function AnalysisPage() {
             </div>
 
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-              <div className="mb-4">
-                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Redispatch</h3>
-                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; grid congestion measures &middot; source: netztransparenz.de</p>
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Redispatch</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Germany &middot; grid congestion measures &middot; source: netztransparenz.de</p>
+                </div>
+                <RangeBadge from={ntpData.from} to={ntpData.to} />
               </div>
               {redispatchSummary && redispatchSummary.count > 0 ? (
                 <>
@@ -627,9 +738,12 @@ export default function AnalysisPage() {
             </div>
 
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5 lg:col-span-2">
-              <div className="mb-4">
-                <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Activated Balancing Capacity — Net (Germany)</h3>
-                <p className="text-xs text-[var(--mp-text-6)] mt-0.5">aFRR (SRL) &amp; mFRR (MRL), positive − negative &middot; qualitätsgesichert &middot; source: netztransparenz.de</p>
+              <div className="flex items-baseline justify-between mb-4">
+                <div>
+                  <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Activated Balancing Capacity — Net (Germany)</h3>
+                  <p className="text-xs text-[var(--mp-text-6)] mt-0.5">aFRR (SRL) &amp; mFRR (MRL), positive − negative &middot; qualitätsgesichert &middot; source: netztransparenz.de</p>
+                </div>
+                <RangeBadge from={ntpData.activationFrom} to={ntpData.activationTo} />
               </div>
               {activationChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={240}>
@@ -648,6 +762,7 @@ export default function AnalysisPage() {
               )}
             </div>
           </div>
+          </>
         )}
 
         {!loading && !error && series.length === 0 && (
