@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS market_generation (
   PRIMARY KEY (country, ts, fuel_type)
 );
 
+-- Prévisions éolien/solaire day-ahead (ENTSO-E, documentType A69). Même
+-- forme que market_generation pour permettre une comparaison directe
+-- prévision vs réalisé (Forecast > Generation Forecast).
+CREATE TABLE IF NOT EXISTS market_wind_solar_forecast (
+  country     VARCHAR(2) NOT NULL,
+  ts          TIMESTAMPTZ NOT NULL,
+  fuel_type   VARCHAR(40) NOT NULL,
+  quantity_mw NUMERIC(10, 2) NOT NULL,
+  PRIMARY KEY (country, ts, fuel_type)
+);
+CREATE INDEX IF NOT EXISTS idx_wsforecast_country_ts ON market_wind_solar_forecast (country, ts);
+
 -- Index pour accélérer les requêtes de plage de dates (l'accès principal du dashboard)
 CREATE INDEX IF NOT EXISTS idx_prices_country_ts ON market_prices (country, ts);
 CREATE INDEX IF NOT EXISTS idx_generation_country_ts ON market_generation (country, ts);
