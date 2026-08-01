@@ -30,6 +30,16 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
 
+// Pour les séries qui couvrent plusieurs jours (reBAP, aFRR/mFRR: fenêtre de
+// plusieurs semaines) — fmtTime seul est ambigu (même "14:00" répété chaque
+// jour). Inclut la date pour que chaque point reste identifiable.
+function fmtDateTime(ts) {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+  return `${date} ${time}`;
+}
+
 // Fusionne load (consommation) + generation (mix) live en la même forme que
 // /api/analysis, pour réutiliser exactement la même logique d'affichage.
 function deriveLiveSeries(loadPoints, genPoints) {
@@ -252,7 +262,7 @@ export default function AnalysisPage() {
     : 0;
 
   const reBapChartData = (ntpData?.reBAP || []).map((p) => ({
-    time: fmtTime(p.timestamp),
+    time: fmtDateTime(p.timestamp),
     rebap: p.rebap_unterdeckt,
   }));
   const reBapStats = reBapChartData.length
@@ -302,7 +312,7 @@ export default function AnalysisPage() {
     }
     return [...byTs.values()]
       .sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1))
-      .map((r) => ({ time: fmtTime(r.timestamp), net: r.net }));
+      .map((r) => ({ time: fmtDateTime(r.timestamp), net: r.net }));
   }
   const afrrChartData = deriveNetActivation(ntpData?.activatedAFRR);
   const mfrrChartData = deriveNetActivation(ntpData?.activatedMFRR);
@@ -523,10 +533,10 @@ export default function AnalysisPage() {
                 )}
               </div>
               {reBapChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={reBapChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={reBapChartData} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(reBapChartData.length / 8))} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(reBapChartData.length / 8))} angle={-35} textAnchor="end" height={40} />
                     <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
                     <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(2)} EUR/MWh`} />
                     <Line type="stepAfter" dataKey="rebap" stroke="#C4622D" strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -622,10 +632,10 @@ export default function AnalysisPage() {
                 <p className="text-xs text-[var(--mp-text-6)] mt-0.5">aFRR (SRL) &amp; mFRR (MRL), positive − negative &middot; qualitätsgesichert &middot; source: netztransparenz.de</p>
               </div>
               {activationChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={activationChartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={activationChartData} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(activationChartData.length / 12))} />
+                    <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(activationChartData.length / 10))} angle={-35} textAnchor="end" height={40} />
                     <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v) => `${v.toFixed(0)}MW`} />
                     <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} />
                     <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
