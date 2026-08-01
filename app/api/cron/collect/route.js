@@ -16,8 +16,9 @@ export const maxDuration = 60;
 function isAuthorized(request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
+  const { searchParams } = new URL(request.url);
   const auth = request.headers.get("authorization");
-  return auth === `Bearer ${secret}`;
+  return auth === `Bearer ${secret}` || searchParams.get("secret") === secret;
 }
 
 async function collectOne(country) {
