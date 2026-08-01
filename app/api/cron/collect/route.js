@@ -1,7 +1,10 @@
 // app/api/cron/collect/route.js
 import { NextResponse } from "next/server";
 import { collectCountry, DOMAINS } from "../../../../lib/entsoe";
-import { collectDe } from "../../../../lib/netztransparenz";
+import {
+  fetchRedispatch, fetchReBAP, fetchRZSaldo, fetchAepSchaetzer,
+  fetchActivatedAFRR, fetchActivatedMFRR,
+} from "../../../../lib/netztransparenz";
 import {
   upsertPrices, upsertGeneration, upsertLoad, logCollection,
   upsertRedispatch, upsertReBAP, upsertAepSchaetzer, upsertRZSaldo,
@@ -27,6 +30,15 @@ async function collectOne(country) {
   return { prices_stored: nPrices, generation_rows_stored: nGen, load_rows_stored: nLoad, warnings: data.warnings };
 }
 
+const DE_FETCHERS = {
+  redispatch: fetchRedispatch,
+  rebap: fetchReBAP,
+  aep_schaetzer: fetchAepSchaetzer,
+  rz_saldo: fetchRZSaldo,
+  activated_afrr: fetchActivatedAFRR,
+  activated_mfrr: fetchActivatedMFRR,
+};
+
 const DE_UPSERTERS = {
   redispatch: upsertRedispatch,
   rebap: upsertReBAP,
@@ -36,17 +48,38 @@ const DE_UPSERTERS = {
   activated_mfrr: upsertActivatedMFRR,
 };
 
-// Collecte les 6 séries netztransparenz.de pour les dernières 24h glissantes
-// (la plupart sont publiées toutes les 15 min ou en continu).
+// redispatch/aep_schaetzer/rz_saldo sont publiés en continu ("betrieblich")
+// -> fenêtre 24h glissante suffit. reBAP/aFRR/mFRR sont "qualitätsgesichert"
+// et publiés avec ~10-14 jours de retard (voir doc netztransparenz.de) : si
+// on ne regardait que les dernières 24h, on ne verrait JAMAIS les nouvelles
+// données au moment où elles sont enfin publiées. On interroge donc pour ces
+// 3 séries une fenêtre décalée en arrière (J-21 à J-3) qui capte de façon
+// fiable les données fraîchement publiées, quel que soit le délai exact.
+const QUALITAETSGESICHERT_SERIES = new Set(["rebap", "activated_afrr", "activated_mfrr"]);
+
+// Collecte les 6 séries netztransparenz.de, chacune avec la fenêtre adaptée
+// à son cycle de publication (voir commentaire ci-dessus). Un seul appel
+// réseau par série (pas d'orchestrateur générique qui refetch tout à chaque
+// itération).
 async function collectDeAndStore() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 24 * 3600 * 1000);
-  const results = await collectDe(from, to);
+  const now = new Date();
+  const realtimeFrom = new Date(now.getTime() - 24 * 3600 * 1000);
+  const delayedFrom = new Date(now.getTime() - 21 * 24 * 3600 * 1000);
+  const delayedTo = new Date(now.getTime() - 3 * 24 * 3600 * 1000);
+
   const summary = {};
-  for (const [series, { data, error }] of Object.entries(results)) {
-    const stored = error ? 0 : await DE_UPSERTERS[series](data);
-    await logDeCollection(series, stored, error);
-    summary[series] = { stored, error };
+  for (const series of Object.keys(DE_FETCHERS)) {
+    const [from, to] = QUALITAETSGESICHERT_SERIES.has(series) ? [delayedFrom, delayedTo] : [realtimeFrom, now];
+    try {
+      const data = await DE_FETCHERS[series](from, to);
+      const stored = await DE_UPSERTERS[series](data);
+      await logDeCollection(series, stored, null);
+      summary[series] = { stored, error: null };
+    } catch (err) {
+      const errMsg = String(err.message || err);
+      await logDeCollection(series, 0, errMsg);
+      summary[series] = { stored: 0, error: errMsg };
+    }
   }
   return summary;
 }
