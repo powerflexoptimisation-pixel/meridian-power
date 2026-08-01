@@ -2,8 +2,9 @@
 // Usage:
 //   /api/netztransparenz?from=2026-06-24&to=2026-06-24            (jour, 00:00-24:00 Berlin)
 //   /api/netztransparenz?fromDt=2026-06-24T08:00&toDt=2026-07-10T20:00  (plage précise, priorité sur from/to)
-// (aucun paramètre -> mode live : hier pour les séries temps réel, fenêtre
-// élargie pour les séries qualitätsgesichert retardées — voir plus bas)
+// (aucun paramètre -> mode live : hier + aujourd'hui + demain pour les
+// séries temps réel, fenêtre élargie pour les séries qualitätsgesichert
+// retardées — voir plus bas)
 // Données spécifiques à l'Allemagne (source: les 4 GRT allemands via
 // netztransparenz.de), récupérées à la volée (pas stockées en base pour ce
 // endpoint — la persistence Postgres est gérée séparément par le cron).
@@ -45,8 +46,14 @@ export async function GET(request) {
     from = berlinDateToUTC(fromParam);
     to = new Date(berlinDateToUTC(toParam).getTime() + 24 * 3600 * 1000);
   } else {
-    to = berlinMidnightUTC(0);
+    // Mode live: hier (contexte) + aujourd'hui + demain. Les séries "betrieblich"
+    // (RZ-Saldo, AEP-Schätzer) n'ont naturellement pas de données au-delà de
+    // "maintenant" (pas des prévisions), donc la borne "demain" ne ramène rien
+    // de plus pour elles — mais Redispatch publie parfois des mesures déjà
+    // planifiées pour le lendemain, qu'on veut voir apparaître dès qu'elles
+    // sont annoncées plutôt que d'attendre le jour J.
     from = berlinMidnightUTC(1);
+    to = berlinMidnightUTC(-1);
   }
   if (Number.isNaN(from?.getTime()) || Number.isNaN(to?.getTime()) || from >= to) {
     return NextResponse.json({ error: "Plage de dates invalide." }, { status: 400 });
