@@ -1,0 +1,28 @@
+name: Collect DE realtime (netztransparenz.de)
+
+# Vercel Hobby plafonne son propre cron à 1x/jour (voir app/api/cron/collect
+# pour la collecte quotidienne complète, ENTSO-E + toutes les séries DE).
+# Ce workflow contourne cette limite pour les 3 séries netztransparenz.de
+# publiées en continu (Redispatch, AEP-Schätzer, RZ-Saldo) en appelant la
+# route /api/cron/collect-de-realtime toutes les 15 min depuis GitHub
+# Actions (gratuit, indépendant de Vercel).
+#
+# Prérequis: définir le secret CRON_CRON_SECRET dans les Settings du repo
+# GitHub (Settings > Secrets and variables > Actions > New repository
+# secret), avec la même valeur que la variable d'environnement CRON_SECRET
+# sur Vercel.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call collect-de-realtime endpoint
+        run: |
+          curl -sf -X GET "https://meridian-power.vercel.app/api/cron/collect-de-realtime" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n"
