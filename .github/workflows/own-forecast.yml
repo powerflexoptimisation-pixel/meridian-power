@@ -1,0 +1,29 @@
+name: Own forecast refresh (Forecast for Trading)
+
+# Cœur du différenciateur de Forecast for Trading: la météo DWD ICON-D2 se
+# met à jour toutes les 1-3h, contre 1x/jour pour la prévision officielle
+# ENTSO-E. Ce workflow rafraîchit notre prévision maison (Wind Onshore/
+# Offshore/Solar, DE) toutes les heures via GitHub Actions (Vercel Hobby
+# plafonne son propre cron à 1x/jour — voir app/api/cron/collect).
+#
+# Le modèle lui-même (coefficients de régression) n'a PAS besoin d'être
+# recalibré aussi souvent — /api/admin/calibrate-own-forecast est à
+# relancer manuellement de temps en temps (le mix de capacité installée
+# évolue lentement), pas via ce workflow.
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call own-forecast endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" -X GET "https://meridian-power.vercel.app/api/cron/own-forecast" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $HTTP_CODE"
+          cat response.json
+          if [ "$HTTP_CODE" -ge 400 ]; then exit 1; fi
