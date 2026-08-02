@@ -40,7 +40,9 @@ export async function GET(request) {
   const actual = await getGenerationHistory(COUNTRY, from, to);
   const actualByTs = {};
   for (const fuel of FUELS) {
-    actualByTs[fuel] = new Map(actual.filter((p) => p[fuel] != null).map((p) => [p.timestamp, p[fuel]]));
+    actualByTs[fuel] = new Map(
+      actual.filter((p) => p[fuel] != null).map((p) => [new Date(p.timestamp).getTime(), p[fuel]])
+    );
   }
 
   const results = {};
