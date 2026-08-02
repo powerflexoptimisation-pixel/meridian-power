@@ -58,7 +58,7 @@ function dailyStats(points, fuel) {
 export default function GenerationForecastAnalysisPage() {
   const [country, setCountry] = useState("DE");
   const [fuel, setFuel] = useState("Wind Onshore");
-  const [from, setFrom] = useState(isoDaysAgo(14));
+  const [from, setFrom] = useState(isoDaysAgo(365));
   const [to, setTo] = useState(isoDaysAgo(0));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,9 +83,17 @@ export default function GenerationForecastAnalysisPage() {
   const daily = useMemo(() => dailyStats(points, fuel), [points, fuel]);
 
   const scatterData = useMemo(() => {
-    return points
+    const all = points
       .filter((p) => p[`${fuel}_forecast`] != null && p[`${fuel}_actual`] != null)
       .map((p) => ({ x: p[`${fuel}_forecast`], y: p[`${fuel}_actual`] }));
+    // Sous-échantillonnage au-delà de 3000 points: un scatter avec des
+    // dizaines de milliers de points (ex: 365j x 96 pts/jour = ~35k) ralentit
+    // sérieusement le rendu navigateur sans ajouter d'information visuelle
+    // utile (la densité du nuage est déjà représentative avec un échantillon).
+    const MAX_POINTS = 3000;
+    if (all.length <= MAX_POINTS) return all;
+    const step = Math.ceil(all.length / MAX_POINTS);
+    return all.filter((_, i) => i % step === 0);
   }, [points, fuel]);
 
   const maxAxis = scatterData.length ? Math.max(...scatterData.map((d) => Math.max(d.x, d.y))) * 1.05 : 1000;
@@ -155,9 +163,9 @@ export default function GenerationForecastAnalysisPage() {
           <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-4">Daily MAPE — {fuel}</h3>
           {daily.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={daily} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+              <BarChart data={daily} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} />
+                <XAxis dataKey="day" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(daily.length / 15))} angle={-35} textAnchor="end" height={40} />
                 <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} tickFormatter={(v) => `${v.toFixed(0)}%`} />
                 <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => v == null ? "N/A" : `${v.toFixed(1)}%`} />
                 <Bar dataKey="mape" fill={market.color} isAnimationActive={false} />
@@ -170,10 +178,10 @@ export default function GenerationForecastAnalysisPage() {
           <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-4">Daily Bias — {fuel} <span className="text-[var(--mp-text-6)] normal-case font-normal">(forecast − actual, avg per day)</span></h3>
           {daily.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={daily} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+              <BarChart data={daily} margin={{ top: 5, right: 5, left: -10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                 <ReferenceLine y={0} stroke="var(--mp-grid)" />
-                <XAxis dataKey="day" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} />
+                <XAxis dataKey="day" tick={{ fill: "var(--mp-tick)", fontSize: 9, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(daily.length / 15))} angle={-35} textAnchor="end" height={40} />
                 <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v) => `${(v / 1000).toFixed(1)}GW`} />
                 <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v >= 0 ? "+" : ""}${(v / 1000).toFixed(2)} GW`} />
                 <Bar dataKey="bias" fill="#C4622D" isAnimationActive={false} />
