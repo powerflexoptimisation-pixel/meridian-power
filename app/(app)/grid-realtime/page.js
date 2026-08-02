@@ -92,21 +92,32 @@ export default function GridRealtimePage() {
     ? { avg: nrvSaldoChartData.reduce((s, r) => s + (r.value || 0), 0) / nrvSaldoChartData.length,
         min: Math.min(...nrvSaldoChartData.map((r) => r.value)), max: Math.max(...nrvSaldoChartData.map((r) => r.value)) }
     : null;
+  // Spec: la carte doit montrer, si possible, la valeur du quart d'heure
+  // actuel — le dernier point de la plage affichée (le plus récent
+  // disponible) sert de repli si le quart d'heure en cours n'est pas
+  // encore publié.
+  const nrvSaldoCurrent = nrvSaldoChartData.length ? nrvSaldoChartData[nrvSaldoChartData.length - 1] : null;
 
   const trafficLightChartData = (ntpData?.trafficLight || []).map((p) => ({ time: fmtDateTime(p.from), score: TRAFFIC_LIGHT_SCORE[p.value] ?? 0, value: p.value }));
   const trafficLightCurrent = ntpData?.trafficLight?.length ? ntpData.trafficLight[ntpData.trafficLight.length - 1] : null;
 
   const rzSaldoChartData = (ntpData?.rzSaldo || []).map((p) => ({ time: fmtTime(p.timestamp), fullTime: fmtDateTime(p.timestamp), "50Hertz": p["50Hertz"], Amprion: p.Amprion, "TenneT TSO": p["TenneT TSO"], TransnetBW: p.TransnetBW }));
+  const rzSaldoCurrent = rzSaldoChartData.length ? rzSaldoChartData[rzSaldoChartData.length - 1] : null;
+  const rzSaldoCurrentTotal = rzSaldoCurrent
+    ? ["50Hertz", "Amprion", "TenneT TSO", "TransnetBW"].reduce((s, k) => s + (rzSaldoCurrent[k] || 0), 0)
+    : null;
 
   const aepChartData = (ntpData?.aepSchaetzer || []).map((p) => ({ time: fmtDateTime(p.timestamp), aep: p.aep_schaetzer_eur_mwh }));
   const aepStats = aepChartData.length
     ? { avg: aepChartData.reduce((s, r) => s + (r.aep || 0), 0) / aepChartData.length, min: Math.min(...aepChartData.map((r) => r.aep)), max: Math.max(...aepChartData.map((r) => r.aep)) }
     : null;
+  const aepCurrent = [...aepChartData].reverse().find((r) => r.aep != null) || null;
 
   const idAepChartData = (ntpData?.idAep || []).map((p) => ({ time: fmtDateTime(p.timestamp), value: p.value_eur_mwh }));
   const idAepStats = idAepChartData.length
     ? { avg: idAepChartData.reduce((s, r) => s + (r.value || 0), 0) / idAepChartData.length, min: Math.min(...idAepChartData.map((r) => r.value)), max: Math.max(...idAepChartData.map((r) => r.value)) }
     : null;
+  const idAepCurrent = [...idAepChartData].reverse().find((r) => r.value != null) || null;
 
   function sumGermany(rows) {
     const byTs = new Map();
@@ -156,6 +167,9 @@ export default function GridRealtimePage() {
                 </div>
                 {nrvSaldoStats && (
                   <div className="flex gap-4 text-right font-mono">
+                    {nrvSaldoCurrent && (
+                      <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">Now</div><div className={`text-sm font-semibold ${nrvSaldoCurrent.value < 0 ? "text-red-400" : "text-[var(--mp-text-1)]"}`}>{nrvSaldoCurrent.value.toFixed(0)}</div></div>
+                    )}
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">Avg</div><div className="text-sm text-[var(--mp-text-2)]">{nrvSaldoStats.avg.toFixed(0)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">Min</div><div className={`text-sm ${nrvSaldoStats.min < 0 ? "text-red-400" : "text-[var(--mp-text-2)]"}`}>{nrvSaldoStats.min.toFixed(0)}</div></div>
                     <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">Max</div><div className="text-sm text-amber-400">{nrvSaldoStats.max.toFixed(0)}</div></div>
@@ -213,7 +227,15 @@ export default function GridRealtimePage() {
                   <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">RZ-Saldo</h3>
                   <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Control area balance by TSO (MW)</p>
                 </div>
-                <RangeBadge from={ntpData.from} to={ntpData.to} />
+                <div className="flex items-center gap-3">
+                  {rzSaldoCurrentTotal != null && (
+                    <div className="text-right font-mono">
+                      <div className="text-[10px] text-[var(--mp-text-6)] uppercase">DE total now</div>
+                      <div className={`text-sm font-semibold ${rzSaldoCurrentTotal < 0 ? "text-red-400" : "text-[var(--mp-text-1)]"}`}>{rzSaldoCurrentTotal.toFixed(0)}</div>
+                    </div>
+                  )}
+                  <RangeBadge from={ntpData.from} to={ntpData.to} />
+                </div>
               </div>
               {rzSaldoChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
@@ -237,7 +259,15 @@ export default function GridRealtimePage() {
                   <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">AEP-Schätzer &amp; ID AEP</h3>
                   <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Real-time / intraday balancing price proxies (EUR/MWh)</p>
                 </div>
-                <RangeBadge from={ntpData.from} to={ntpData.to} />
+                <div className="flex items-center gap-3">
+                  {(aepCurrent || idAepCurrent) && (
+                    <div className="flex gap-3 text-right font-mono">
+                      {aepCurrent && <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">AEP now</div><div className="text-sm font-semibold text-[#4A94C4]">{aepCurrent.aep.toFixed(1)}</div></div>}
+                      {idAepCurrent && <div><div className="text-[10px] text-[var(--mp-text-6)] uppercase">ID AEP now</div><div className="text-sm font-semibold text-[#8B6FC9]">{idAepCurrent.value.toFixed(1)}</div></div>}
+                    </div>
+                  )}
+                  <RangeBadge from={ntpData.from} to={ntpData.to} />
+                </div>
               </div>
               {aepChartData.length > 0 || idAepChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={240}>

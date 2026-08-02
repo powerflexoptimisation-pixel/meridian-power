@@ -367,7 +367,23 @@ function GenerationMix({ market, dataByMarket }) {
   fuelKeys.forEach((k) => { totals[k] = gen.reduce((sum, row) => sum + (row[k] || 0), 0); });
   const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
   const renewables = ["Solar", "Wind Onshore", "Wind Offshore", "Hydro Run-of-river", "Hydro Water Reservoir", "Biomass", "Geothermal", "Other renewable", "Marine"];
-  const renewShare = (fuelKeys.filter((k) => renewables.includes(k)).reduce((s, k) => s + totals[k], 0) / grandTotal) * 100;
+  // Spec: les cartes affichent la valeur du quart d'heure actuel "si
+  // possible" — en mode live, on calcule la part renouvelable à partir du
+  // dernier point disponible (~ maintenant) plutôt que de la moyenne de
+  // toute la journée. En mode historique (viewDate défini), il n'y a pas
+  // de "maintenant" pertinent pour le jour consulté: on garde la moyenne
+  // journalière, qui reste la lecture la plus utile dans ce contexte.
+  const currentGen = !viewDate ? currentGenerationPoint(gen) : null;
+  let renewShare, renewShareIsCurrent;
+  if (currentGen) {
+    const currentTotal = fuelKeys.reduce((s, k) => s + (currentGen[k] || 0), 0) || 1;
+    const currentRenew = fuelKeys.filter((k) => renewables.includes(k)).reduce((s, k) => s + (currentGen[k] || 0), 0);
+    renewShare = (currentRenew / currentTotal) * 100;
+    renewShareIsCurrent = true;
+  } else {
+    renewShare = (fuelKeys.filter((k) => renewables.includes(k)).reduce((s, k) => s + totals[k], 0) / grandTotal) * 100;
+    renewShareIsCurrent = false;
+  }
 
   function toggleFuel(k) {
     setHidden((prev) => {
@@ -385,7 +401,11 @@ function GenerationMix({ market, dataByMarket }) {
           <p className="text-xs text-[var(--mp-text-6)] mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; source: ENTSO-E &middot; click legend to filter</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-right font-mono"><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
+          <div className="text-right font-mono">
+            <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Renewables Share {renewShareIsCurrent ? "(now)" : "(day avg)"}</div>
+            <div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div>
+            {renewShareIsCurrent && currentGen && <div className="text-[9px] text-[var(--mp-text-6)]">{fmtFullTime(currentGen.timestamp)}</div>}
+          </div>
           <DateJumpControls viewDate={viewDate} setViewDate={setViewDate} />
         </div>
       </div>
