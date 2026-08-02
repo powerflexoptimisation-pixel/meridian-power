@@ -240,7 +240,7 @@ function PriceChart({ market, dataByMarket }) {
         <div>
           <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Day-Ahead Auction Price</h3>
           <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
-            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; 15-min MTU &middot; {viewDate ? viewDate : "live"}
+            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; 15-min MTU &middot; {viewDate ? viewDate : "live"} &middot; source: ENTSO-E
           </p>
         </div>
         {!multiMode && (
@@ -284,7 +284,7 @@ function PriceChart({ market, dataByMarket }) {
             <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
             <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={11} />
             <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
+            <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 12 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
             <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
             {selected.map((code) => (
               <Line key={code} type="monotone" dataKey={code} name={code} stroke={MARKET_COLOR[code]} strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -355,7 +355,7 @@ function GenerationMix({ market, dataByMarket }) {
   const visibleKeys = fuelKeys.filter((k) => !hidden.has(k));
 
   const chartData = gen.map((row) => {
-    const out = { time: fmtTime(row.timestamp) };
+    const out = { time: fmtTime(row.timestamp), fullTime: fmtFullTime(row.timestamp) };
     visibleKeys.forEach((k) => { out[k] = row[k] || 0; });
     // Total réel toutes filières confondues (indépendant du filtre de légende),
     // pour toujours voir la somme nette finale même si certaines filières sont masquées.
@@ -382,7 +382,7 @@ function GenerationMix({ market, dataByMarket }) {
       <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
         <div>
           <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Actual Generation Mix</h3>
-          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; click legend to filter</p>
+          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">{market.name} &middot; MW by production type &middot; {viewDate ? viewDate : "live"} &middot; source: ENTSO-E &middot; click legend to filter</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right font-mono"><div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">Renewables Share</div><div className="text-teal-400 text-lg font-semibold">{renewShare.toFixed(1)}%</div></div>
@@ -399,7 +399,7 @@ function GenerationMix({ market, dataByMarket }) {
           <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
           <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={11} />
           <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={45} />
-          <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
+          <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
           {visibleKeys.slice(0, 12).map((k) => (
             <Area key={k} type="monotone" dataKey={k} stackId="1" stroke={FUEL_COLORS[k] || "#888"} fill={FUEL_COLORS[k] || "#888"} fillOpacity={0.75} isAnimationActive={false} />
           ))}
@@ -586,7 +586,7 @@ function HistoryChart({ market }) {
         <div>
           <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Price History</h3>
           <p className="text-xs text-[var(--mp-text-6)] mt-0.5">
-            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; {resolution === "hour" ? "hourly" : "daily"} avg{!multiMode ? " / min / max" : ""}
+            {selected.map((c) => MARKETS.find((m) => m.code === c)?.name).join(" vs ")} &middot; {resolution === "hour" ? "hourly" : "daily"} avg{!multiMode ? " / min / max" : ""} &middot; source: ENTSO-E
             {hasData && (
               <> &middot; {fmtDayFull(coverageList[0].coverage.earliest)} → {fmtDayFull(coverageList[0].coverage.latest)} stored</>
             )}

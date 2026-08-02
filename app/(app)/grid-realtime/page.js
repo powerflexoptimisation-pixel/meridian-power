@@ -96,7 +96,7 @@ export default function GridRealtimePage() {
   const trafficLightChartData = (ntpData?.trafficLight || []).map((p) => ({ time: fmtDateTime(p.from), score: TRAFFIC_LIGHT_SCORE[p.value] ?? 0, value: p.value }));
   const trafficLightCurrent = ntpData?.trafficLight?.length ? ntpData.trafficLight[ntpData.trafficLight.length - 1] : null;
 
-  const rzSaldoChartData = (ntpData?.rzSaldo || []).map((p) => ({ time: fmtTime(p.timestamp), "50Hertz": p["50Hertz"], Amprion: p.Amprion, "TenneT TSO": p["TenneT TSO"], TransnetBW: p.TransnetBW }));
+  const rzSaldoChartData = (ntpData?.rzSaldo || []).map((p) => ({ time: fmtTime(p.timestamp), fullTime: fmtDateTime(p.timestamp), "50Hertz": p["50Hertz"], Amprion: p.Amprion, "TenneT TSO": p["TenneT TSO"], TransnetBW: p.TransnetBW }));
 
   const aepChartData = (ntpData?.aepSchaetzer || []).map((p) => ({ time: fmtDateTime(p.timestamp), aep: p.aep_schaetzer_eur_mwh }));
   const aepStats = aepChartData.length
@@ -114,14 +114,14 @@ export default function GridRealtimePage() {
       const { timestamp, ...rest } = r;
       byTs.set(timestamp, Object.values(rest).reduce((s, v) => s + (v || 0), 0));
     }
-    return [...byTs.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([ts, total]) => ({ time: fmtTime(ts), value: total }));
+    return [...byTs.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([ts, total]) => ({ time: fmtTime(ts), fullTime: fmtDateTime(ts), value: total }));
   }
   const hochrechnungSolarData = sumGermany(ntpData?.hochrechnungSolar);
   const hochrechnungWindData = sumGermany(ntpData?.hochrechnungWind);
   const hochrechnungChartData = useMemo(() => {
     const byTime = new Map();
-    hochrechnungSolarData.forEach((r) => byTime.set(r.time, { time: r.time, solar: r.value }));
-    hochrechnungWindData.forEach((r) => { const row = byTime.get(r.time) || { time: r.time }; row.wind = r.value; byTime.set(r.time, row); });
+    hochrechnungSolarData.forEach((r) => byTime.set(r.time, { time: r.time, fullTime: r.fullTime, solar: r.value }));
+    hochrechnungWindData.forEach((r) => { const row = byTime.get(r.time) || { time: r.time, fullTime: r.fullTime }; row.wind = r.value; byTime.set(r.time, row); });
     return [...byTime.values()];
   }, [hochrechnungSolarData, hochrechnungWindData]);
 
@@ -221,7 +221,7 @@ export default function GridRealtimePage() {
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                     <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(rzSaldoChartData.length / 8))} />
                     <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} />
-                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${v.toFixed(1)} MW`} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
                     <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
                     {Object.keys(RZ_TSO_COLORS).map((tso) => (
                       <Line key={tso} type="monotone" dataKey={tso} stroke={RZ_TSO_COLORS[tso]} strokeWidth={1.2} dot={false} isAnimationActive={false} />
@@ -273,7 +273,7 @@ export default function GridRealtimePage() {
                     <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(hochrechnungChartData.length / 8))} />
                     <YAxis yAxisId="solar" tick={{ fill: "#E8C468", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
                     <YAxis yAxisId="wind" orientation="right" tick={{ fill: "#4A94C4", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${v.toFixed(0)}MW`} />
-                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v, n) => n === "Solar" ? `${(v / 1000).toFixed(2)} GW` : `${v.toFixed(1)} MW`} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v, n) => n === "Solar" ? `${(v / 1000).toFixed(2)} GW` : `${v.toFixed(1)} MW`} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
                     <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
                     <Area yAxisId="solar" type="monotone" dataKey="solar" name="Solar" stroke="#E8C468" strokeWidth={1.5} fill="url(#solarGradRT)" isAnimationActive={false} connectNulls />
                     <Area yAxisId="wind" type="monotone" dataKey="wind" name="Wind" stroke="#4A94C4" strokeWidth={1.5} fill="url(#windGradRT)" isAnimationActive={false} connectNulls />

@@ -48,7 +48,7 @@ function dailyStats(points, fuel) {
   return [...byDay.values()]
     .sort((a, b) => (a.day < b.day ? -1 : 1))
     .map((e) => ({
-      day: e.day.slice(5), // MM-DD
+      day: e.day, // YYYY-MM-DD complet (évite l'ambiguïté sur une plage à cheval sur 2 années)
       mae: e.errors.reduce((s, v) => s + v, 0) / e.errors.length,
       mape: e.pctErrors.length ? (e.pctErrors.reduce((s, v) => s + v, 0) / e.pctErrors.length) * 100 : null,
       bias: e.biases.reduce((s, v) => s + v, 0) / e.biases.length,

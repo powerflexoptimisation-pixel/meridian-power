@@ -19,6 +19,12 @@ const NEIGHBOR_COLORS = {
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
+function fmtFullDateTime(ts) {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+  return `${date} ${time}`;
+}
 
 export default function CrossBorderAnalysisPage() {
   const [activeMarket, setActiveMarket] = useState("DE");
@@ -47,7 +53,7 @@ export default function CrossBorderAnalysisPage() {
     const byTs = new Map();
     for (const n of neighbors) {
       (flowsData.flows[n] || []).forEach((p) => {
-        const row = byTs.get(p.timestamp) || { key: p.timestamp, time: fmtTime(p.timestamp) };
+        const row = byTs.get(p.timestamp) || { key: p.timestamp, time: fmtTime(p.timestamp), fullTime: fmtFullDateTime(p.timestamp) };
         row[n] = p.net_mw;
         byTs.set(p.timestamp, row);
       });
@@ -63,7 +69,7 @@ export default function CrossBorderAnalysisPage() {
       <header className="border-b border-[var(--mp-border)] px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-sm tracking-[0.15em] text-[var(--mp-text-1)] font-mono uppercase">Cross Border Analysis</h1>
-          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Physical net exchange with neighboring bidding zones</p>
+          <p className="text-xs text-[var(--mp-text-6)] mt-0.5">Physical net exchange with neighboring bidding zones &middot; source: ENTSO-E</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
@@ -101,7 +107,7 @@ export default function CrossBorderAnalysisPage() {
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                 <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(flowsChartData.length / 10))} />
                 <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v) => `${(v / 1000).toFixed(1)}GW`} />
-                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
                 <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
                 {neighbors.map((n) => (
                   <Line key={n} type="monotone" dataKey={n} stroke={NEIGHBOR_COLORS[n] || "#888"} strokeWidth={1.2} dot={false} isAnimationActive={false} />

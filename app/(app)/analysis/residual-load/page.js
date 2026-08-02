@@ -16,6 +16,12 @@ const OTHER_RENEWABLES = ["Hydro Run-of-river", "Hydro Water Reservoir", "Hydro 
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 }
+function fmtFullDateTime(ts) {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+  return `${date} ${time}`;
+}
 function deriveLiveSeries(loadPoints, genPoints) {
   return (loadPoints || []).map((lp) => {
     const gen = (genPoints || []).find((g) => g.timestamp === lp.timestamp) || {};
@@ -94,7 +100,7 @@ export default function ResidualLoadAnalysisPage() {
     : (histData?.series || []);
 
   const chartData = series.map((s) => ({
-    time: fmtTime(s.timestamp), consumption: s.consumption, windPv: s.windPv, otherRenew: s.otherRenew, residualLoad: s.residualLoad,
+    time: fmtTime(s.timestamp), fullTime: fmtFullDateTime(s.timestamp), consumption: s.consumption, windPv: s.windPv, otherRenew: s.otherRenew, residualLoad: s.residualLoad,
   }));
 
   const cStats = seriesStats(series, "consumption");
@@ -139,7 +145,7 @@ export default function ResidualLoadAnalysisPage() {
         <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Load vs. Wind+PV vs. Residual Load</h3>
-            <p className="text-xs text-[var(--mp-text-6)]">{market.name} &middot; renewables cover {renewShareOfLoad.toFixed(1)}% of avg load</p>
+            <p className="text-xs text-[var(--mp-text-6)]">{market.name} &middot; renewables cover {renewShareOfLoad.toFixed(1)}% of avg load &middot; source: ENTSO-E</p>
           </div>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={320}>
@@ -147,7 +153,7 @@ export default function ResidualLoadAnalysisPage() {
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                 <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 10))} />
                 <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
-                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
                 <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
                 <Line type="monotone" dataKey="consumption" name="Consumption" stroke={market.color} strokeWidth={1.5} dot={false} isAnimationActive={false} />
                 <Line type="monotone" dataKey="windPv" name="Wind+PV" stroke="#3FA796" strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -158,7 +164,8 @@ export default function ResidualLoadAnalysisPage() {
         </div>
 
         <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
-          <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-4">Other Renewables (Hydro, Biomass, Geothermal...)</h3>
+          <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase mb-1">Other Renewables (Hydro, Biomass, Geothermal...)</h3>
+          <p className="text-xs text-[var(--mp-text-6)] mb-4">source: ENTSO-E</p>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
@@ -166,7 +173,7 @@ export default function ResidualLoadAnalysisPage() {
                 <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                 <XAxis dataKey="time" tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={{ stroke: "var(--mp-grid)" }} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 8))} />
                 <YAxis tick={{ fill: "var(--mp-tick)", fontSize: 10, fontFamily: "monospace" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `${(v / 1000).toFixed(0)}GW`} />
-                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => `${(v / 1000).toFixed(2)} GW`} labelFormatter={(_, payload) => (payload && payload[0] ? payload[0].payload.fullTime : "")} />
                 <Area type="monotone" dataKey="otherRenew" stroke="#8B6FC9" strokeWidth={1.5} fill="url(#otherGrad)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
