@@ -49,7 +49,7 @@ export async function GET(request) {
   for (const fuel of FUELS) {
     try {
       const weather = await fetchWeatherHistorical(fuel, startDate, endDate);
-      const model = calibrate(weather, actualByTs[fuel], fuel);
+      const model = calibrate(weather, actualByTs[fuel]);
       if (model) {
         await saveForecastModel(COUNTRY, fuel, model);
         results[fuel] = { calibrated: true, n_points: model.n_points, a: model.a, b: model.b };

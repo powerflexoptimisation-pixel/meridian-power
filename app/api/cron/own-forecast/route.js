@@ -38,7 +38,7 @@ export async function GET(request) {
         continue;
       }
       const weather = await fetchWeatherForecast(fuel, 7);
-      const forecast = predict(model, weather, fuel);
+      const forecast = predict(model, weather);
       const stored = await upsertOwnForecast(COUNTRY, fuel, forecast);
       results[fuel] = { stored, model_updated_at: model.updated_at };
     } catch (err) {
