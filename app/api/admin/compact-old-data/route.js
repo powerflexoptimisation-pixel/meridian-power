@@ -127,7 +127,10 @@ export async function GET(request) {
     results.market_wind_solar_forecast = { error: String(err.message || err) };
   }
 
-  await sql`VACUUM ANALYZE market_prices, market_load, market_generation, market_wind_solar_forecast`.catch(() => {});
+  await sql`VACUUM FULL market_prices`.catch((e) => { results.vacuum_prices_error = String(e.message || e); });
+  await sql`VACUUM FULL market_load`.catch((e) => { results.vacuum_load_error = String(e.message || e); });
+  await sql`VACUUM FULL market_generation`.catch((e) => { results.vacuum_generation_error = String(e.message || e); });
+  await sql`VACUUM FULL market_wind_solar_forecast`.catch((e) => { results.vacuum_forecast_error = String(e.message || e); });
 
   return NextResponse.json({ done_at: new Date().toISOString(), retention_days: days, results });
 }
