@@ -1,0 +1,27 @@
+name: Compact old data (retention policy)
+
+# Politique de rétention: au-delà de 120 jours (fenêtre utilisée par la
+# calibration du modèle de forecast maison), les données 15-min des 4
+# tables les plus volumineuses sont compactées en moyennes horaires (÷4 sur
+# le volume). Empêche la croissance illimitée du stockage Neon (free tier:
+# 0,5 Go) tout en préservant l'analyse long terme (ex: Generation Forecast
+# Analysis sur 365j, à résolution horaire au-delà de 120j).
+# Idempotent — sans risque à exécuter chaque semaine même si rien de
+# nouveau n'a franchi le seuil de 120j depuis la dernière exécution.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # chaque lundi 06h00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call compact-old-data endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" -X GET "https://meridian-power.vercel.app/api/admin/compact-old-data?days=120" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $HTTP_CODE"
+          cat response.json
+          if [ "$HTTP_CODE" -ge 400 ]; then exit 1; fi

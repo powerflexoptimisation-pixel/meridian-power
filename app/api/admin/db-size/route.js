@@ -1,3 +1,6 @@
+// app/api/admin/db-size/route.js
+// Diagnostic de taille des tables — utile pour suivre l'effet de la
+// politique de rétention (voir /api/admin/compact-old-data) dans le temps.
 import { NextResponse } from "next/server";
 import { getSql } from "../../../../lib/db";
 export const dynamic = "force-dynamic";
@@ -14,11 +17,8 @@ export async function GET(request) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sql = getSql();
   const rows = await sql`
-    SELECT
-      relname AS table_name,
-      pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
-      pg_total_relation_size(relid) AS bytes,
-      n_live_tup AS row_count
+    SELECT relname AS table_name, pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+      pg_total_relation_size(relid) AS bytes, n_live_tup AS row_count
     FROM pg_stat_user_tables
     ORDER BY pg_total_relation_size(relid) DESC
   `;
