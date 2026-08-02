@@ -63,6 +63,8 @@ export default function CrossBorderAnalysisPage() {
     return rows;
   })();
   const totalNetAvg = flowsChartData.length ? flowsChartData.reduce((s, r) => s + r.total, 0) / flowsChartData.length : 0;
+  // Spec: valeur du quart d'heure actuel si possible (mode live uniquement).
+  const totalNetCurrent = isLive && flowsChartData.length ? flowsChartData[flowsChartData.length - 1].total : null;
 
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
@@ -94,10 +96,10 @@ export default function CrossBorderAnalysisPage() {
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Net Physical Flows</h3>
             <div className="text-right font-mono">
-              <div className="text-[10px] text-[var(--mp-text-6)] uppercase">Total net position (avg)</div>
-              <div className="text-lg font-semibold" style={{ color: totalNetAvg >= 0 ? "#3FA796" : "#C4622D" }}>
-                {totalNetAvg >= 0 ? "+" : ""}{(totalNetAvg / 1000).toFixed(2)}GW
-                <span className="text-xs text-[var(--mp-text-6)] font-normal ml-1">{totalNetAvg >= 0 ? "net exporter" : "net importer"}</span>
+              <div className="text-[10px] text-[var(--mp-text-6)] uppercase">Total net position {totalNetCurrent != null ? "(now)" : "(avg)"}</div>
+              <div className="text-lg font-semibold" style={{ color: (totalNetCurrent ?? totalNetAvg) >= 0 ? "#3FA796" : "#C4622D" }}>
+                {(totalNetCurrent ?? totalNetAvg) >= 0 ? "+" : ""}{((totalNetCurrent ?? totalNetAvg) / 1000).toFixed(2)}GW
+                <span className="text-xs text-[var(--mp-text-6)] font-normal ml-1">{(totalNetCurrent ?? totalNetAvg) >= 0 ? "net exporter" : "net importer"}</span>
               </div>
             </div>
           </div>

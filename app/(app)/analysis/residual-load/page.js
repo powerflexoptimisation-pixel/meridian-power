@@ -36,16 +36,25 @@ function seriesStats(series, key) {
   return { avg: vals.reduce((a, b) => a + b, 0) / vals.length, min: Math.min(...vals), max: Math.max(...vals) };
 }
 
-function StatCard({ label, color, stats }) {
+function StatCard({ label, color, stats, current, isLive }) {
   return (
     <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] px-4 py-3">
       <div className="flex items-center gap-2 mb-1">
         <span className="w-2 h-2 inline-block rounded-full" style={{ background: color }} />
         <span className="text-[11px] tracking-[0.1em] text-[var(--mp-text-4)] font-mono uppercase">{label}</span>
       </div>
-      <div className="text-xl font-mono font-semibold text-[var(--mp-text-1)]">
-        {(stats.avg / 1000).toFixed(2)} <span className="text-xs text-[var(--mp-text-5)]">GW avg</span>
-      </div>
+      {isLive && current ? (
+        <>
+          <div className="text-xl font-mono font-semibold text-[var(--mp-text-1)]">
+            {(current.value / 1000).toFixed(2)} <span className="text-xs text-[var(--mp-text-5)]">GW</span>
+          </div>
+          <div className="text-[10px] text-[var(--mp-text-6)] font-mono mt-0.5">now &middot; {current.time}</div>
+        </>
+      ) : (
+        <div className="text-xl font-mono font-semibold text-[var(--mp-text-1)]">
+          {(stats.avg / 1000).toFixed(2)} <span className="text-xs text-[var(--mp-text-5)]">GW avg</span>
+        </div>
+      )}
       <div className="flex gap-4 mt-1 text-[10px] font-mono text-[var(--mp-text-5)]">
         <span>L {(stats.min / 1000).toFixed(1)}</span>
         <span>H {(stats.max / 1000).toFixed(1)}</span>
@@ -109,6 +118,14 @@ export default function ResidualLoadAnalysisPage() {
   const rStats = seriesStats(series, "residualLoad");
   const renewShareOfLoad = cStats.avg > 0 ? ((wStats.avg + oStats.avg) / cStats.avg) * 100 : 0;
 
+  // Spec: les cartes affichent, si possible, la valeur du quart d'heure
+  // actuel plutôt que la moyenne de la plage. Uniquement pertinent en mode
+  // live (pas de "maintenant" pour un jour historique consulté) — dernier
+  // point de la série, qui correspond au quart d'heure le plus récent
+  // disponible (repli automatique si celui en cours n'est pas encore publié).
+  const currentPoint = isLive && series.length ? series[series.length - 1] : null;
+  const currentFor = (key) => (currentPoint ? { value: currentPoint[key], time: fmtTime(currentPoint.timestamp) } : null);
+
   return (
     <div className="min-h-screen bg-[var(--mp-bg)] text-[var(--mp-text-2)]" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <header className="border-b border-[var(--mp-border)] px-6 py-4 flex items-center justify-between flex-wrap gap-3">
@@ -136,10 +153,10 @@ export default function ResidualLoadAnalysisPage() {
         {error && <div className="border border-red-500/40 text-red-400 text-xs font-mono px-4 py-3">{error}</div>}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Consumption" color={market.color} stats={cStats} />
-          <StatCard label="Wind + PV" color="#3FA796" stats={wStats} />
-          <StatCard label="Other Renewables" color="#8B6FC9" stats={oStats} />
-          <StatCard label="Residual Load" color="#C4622D" stats={rStats} />
+          <StatCard label="Consumption" color={market.color} stats={cStats} current={currentFor("consumption")} isLive={isLive} />
+          <StatCard label="Wind + PV" color="#3FA796" stats={wStats} current={currentFor("windPv")} isLive={isLive} />
+          <StatCard label="Other Renewables" color="#8B6FC9" stats={oStats} current={currentFor("otherRenew")} isLive={isLive} />
+          <StatCard label="Residual Load" color="#C4622D" stats={rStats} current={currentFor("residualLoad")} isLive={isLive} />
         </div>
 
         <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-5">
