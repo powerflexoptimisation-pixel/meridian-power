@@ -3,8 +3,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET() {
-  // Petite zone de test (Basse-Saxe côtière, forte densité éolienne) avant
-  // de lancer une requête pays entier (potentiellement lourde/coûteuse).
   const query = `
     [out:json][timeout:25];
     (
@@ -12,17 +10,23 @@ export async function GET() {
     );
     out body;
   `;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    body: query,
-  });
-  const json = await res.json();
-  const elements = json.elements || [];
-  const withOutput = elements.filter((e) => e.tags?.["generator:output:electricity"]);
-  return NextResponse.json({
-    status: res.status,
-    count: elements.length,
-    with_capacity_tag: withOutput.length,
-    sample: elements.slice(0, 5).map((e) => ({ lat: e.lat, lon: e.lon, tags: e.tags })),
-  });
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      body: query,
+    });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, rawTextStart: text.slice(0, 500) }); }
+    const elements = json.elements || [];
+    const withOutput = elements.filter((e) => e.tags?.["generator:output:electricity"]);
+    return NextResponse.json({
+      status: res.status,
+      count: elements.length,
+      with_capacity_tag: withOutput.length,
+      sample: elements.slice(0, 5).map((e) => ({ lat: e.lat, lon: e.lon, tags: e.tags })),
+    });
+  } catch (err) {
+    return NextResponse.json({ error: String(err.message || err), stack: err.stack }, { status: 502 });
+  }
 }
