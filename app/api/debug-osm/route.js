@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "MeridianPower/1.0 (energy market data platform; contact: power.flex.optimisation@gmail.com)", "Accept": "application/json" },
       body: "data=" + encodeURIComponent(query),
     });
     const text = await res.text();
