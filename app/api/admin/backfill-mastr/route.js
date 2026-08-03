@@ -1,20 +1,23 @@
 // app/api/admin/backfill-mastr/route.js
-// Usage: /api/admin/backfill-mastr?secret=...
-// Récupère la totalité des éoliennes allemandes en service depuis le
-// Marktstammdatenregister (~32 000 unités, ~7 pages de 5000), les agrège
-// en grille pondérée par capacité (résolution ~0.5° x 0.75°) et stocke le
-// résultat. Cette grille remplace ensuite la pondération par capacité
-// régionale (8 Länder) dans lib/weather.js pour Wind Onshore/Offshore —
-// bien plus précis, basé sur la position réelle de chaque parc plutôt
-// qu'une approximation au niveau du Land.
+// Usage: /api/admin/backfill-mastr?page=1&reset=true&secret=...
+//        /api/admin/backfill-mastr?page=2&secret=...
+//        ... jusqu'à page=7 (total ~32 000 éoliennes / 5000 par page)
+// Récupère UNE page d'éoliennes depuis le Marktstammdatenregister, les
+// agrège en grille (résolution ~0.5° x 0.75°) et ACCUMULE dans la grille
+// existante. Paginé sur plusieurs appels HTTP séparés: chaque page prend
+// ~20s côté MaStR, le total (~140s pour 7 pages) dépasse largement les 60s
+// d'une invocation Vercel — voir lib/mastr.js.
 //
-// À relancer périodiquement (nouveaux parcs mis en service, mix évolue) —
-// pas besoin de fréquence élevée, le parc éolien allemand évolue lentement
-// (quelques centaines de MW/mois au niveau national).
+// reset=true (à mettre sur le tout premier appel, page=1) vide la grille
+// avant d'accumuler — sans ça, un ré-import s'additionnerait à l'ancien
+// au lieu de le remplacer.
+//
+// À relancer périodiquement (nouveaux parcs mis en service) — pas besoin
+// de fréquence élevée, le parc éolien allemand évolue lentement.
 
 import { NextResponse } from "next/server";
-import { fetchAllWindTurbines, aggregateToGrid } from "../../../../lib/mastr";
-import { saveMastrGrid } from "../../../../lib/db";
+import { fetchWindTurbinesPage, aggregateToGrid } from "../../../../lib/mastr";
+import { resetMastrGrid, accumulateMastrGrid } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,24 +34,32 @@ export async function GET(request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(Number(searchParams.get("page") || "1"), 1);
+  const pageSize = Number(searchParams.get("pageSize") || "5000");
+  const reset = searchParams.get("reset") === "true";
 
   try {
-    const turbines = await fetchAllWindTurbines();
+    if (reset) {
+      await resetMastrGrid("Wind Onshore");
+      await resetMastrGrid("Wind Offshore");
+    }
+
+    const { turbines, total } = await fetchWindTurbinesPage(page, pageSize);
     const { onshore, offshore } = aggregateToGrid(turbines);
 
-    const onshoreStored = await saveMastrGrid("Wind Onshore", onshore);
-    const offshoreStored = await saveMastrGrid("Wind Offshore", offshore);
+    const onshoreStored = await accumulateMastrGrid("Wind Onshore", onshore);
+    const offshoreStored = await accumulateMastrGrid("Wind Offshore", offshore);
 
-    const totalOnshoreKw = onshore.reduce((s, p) => s + p.weight, 0);
-    const totalOffshoreKw = offshore.reduce((s, p) => s + p.weight, 0);
-
+    const pagesTotal = Math.ceil(total / pageSize);
     return NextResponse.json({
       done_at: new Date().toISOString(),
-      turbines_fetched: turbines.length,
-      grid: {
-        onshore: { cells: onshoreStored, total_mw: Math.round(totalOnshoreKw / 1000) },
-        offshore: { cells: offshoreStored, total_mw: Math.round(totalOffshoreKw / 1000) },
-      },
+      page,
+      pages_total: pagesTotal,
+      turbines_this_page: turbines.length,
+      total_turbines: total,
+      cells_updated: { onshore: onshoreStored, offshore: offshoreStored },
+      next_page: page < pagesTotal ? page + 1 : null,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
