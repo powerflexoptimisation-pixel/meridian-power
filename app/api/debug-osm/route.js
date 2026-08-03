@@ -2,17 +2,10 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function GET() {
-  // Allemagne entière via le polygone administratif OSM (area) plutôt
-  // qu'une bbox rectangulaire (qui inclurait des pays voisins).
-  const query = `
-    [out:json][timeout:50];
-    area["ISO3166-1"="DE"][admin_level=2]->.de;
-    (
-      node["generator:source"="wind"](area.de);
-    );
-    out body;
-  `;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const bbox = searchParams.get("bbox") || "51.7,5.9,55.1,10.5";
+  const query = `[out:json][timeout:40];(node["generator:source"="wind"](${bbox}););out body;`;
   const start = Date.now();
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
@@ -23,10 +16,9 @@ export async function GET() {
     const text = await res.text();
     const ms = Date.now() - start;
     let json;
-    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, ms, rawTextStart: text.slice(0, 500) }); }
+    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, ms, rawTextStart: text.slice(0, 300) }); }
     const elements = json.elements || [];
-    const withOutput = elements.filter((e) => e.tags?.["generator:output:electricity"]);
-    return NextResponse.json({ status: res.status, ms, count: elements.length, with_capacity_tag: withOutput.length });
+    return NextResponse.json({ status: res.status, ms, count: elements.length });
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err), ms: Date.now() - start }, { status: 502 });
   }
