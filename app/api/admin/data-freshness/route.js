@@ -22,7 +22,7 @@ const CHECKS = [
   { table: "market_wind_solar_forecast", label: "Prévision éolien/solaire ENTSO-E" },
   { table: "market_load_forecast", label: "Prévision de charge ENTSO-E" },
   { table: "own_wind_solar_forecast", label: "Prévision maison (Forecast for Trading)" },
-  { table: "de_redispatch", label: "Redispatch (netztransparenz.de)" },
+  { table: "de_redispatch", label: "Redispatch (netztransparenz.de)", tsCol: "start_ts" },
   { table: "de_aep_schaetzer", label: "AEP-Schätzer (netztransparenz.de)" },
   { table: "de_rz_saldo", label: "RZ-Saldo (netztransparenz.de)" },
   { table: "de_nrv_saldo", label: "NRV-Saldo (netztransparenz.de)" },
