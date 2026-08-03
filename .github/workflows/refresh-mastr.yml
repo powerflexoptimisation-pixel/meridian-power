@@ -1,0 +1,39 @@
+name: Refresh MaStR wind turbine grid (monthly)
+
+# La grille de position des parcs éoliens (Marktstammdatenregister) sert à
+# pondérer les points météo du modèle de forecast maison. Le parc éolien
+# allemand évolue lentement (nouveaux parcs, mises hors service) — un
+# rafraîchissement mensuel est largement suffisant, pas besoin de la
+# fréquence horaire du forecast lui-même.
+
+on:
+  schedule:
+    - cron: "0 4 1 * *"  # le 1er de chaque mois à 04h00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backfill MaStR pages 1-7
+        run: |
+          for page in 1 2 3 4 5 6 7; do
+            RESET="false"
+            if [ "$page" = "1" ]; then RESET="true"; fi
+            HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
+              "https://meridian-power.vercel.app/api/admin/backfill-mastr?page=$page&reset=$RESET" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            echo "Page $page: HTTP $HTTP_CODE"
+            cat response.json
+            echo ""
+            if [ "$HTTP_CODE" -ge 400 ]; then exit 1; fi
+            sleep 5
+          done
+      - name: Recalibrate own-forecast model
+        run: |
+          HTTP_CODE=$(curl -s -o cal.json -w "%{http_code}" \
+            "https://meridian-power.vercel.app/api/admin/calibrate-own-forecast?days=120" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "Recalibrate: HTTP $HTTP_CODE"
+          cat cal.json
+          if [ "$HTTP_CODE" -ge 400 ]; then exit 1; fi
