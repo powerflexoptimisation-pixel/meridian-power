@@ -13,7 +13,8 @@ export async function GET() {
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
-      body: query,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "data=" + encodeURIComponent(query),
     });
     const text = await res.text();
     let json;
@@ -27,6 +28,6 @@ export async function GET() {
       sample: elements.slice(0, 5).map((e) => ({ lat: e.lat, lon: e.lon, tags: e.tags })),
     });
   } catch (err) {
-    return NextResponse.json({ error: String(err.message || err), stack: err.stack }, { status: 502 });
+    return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
   }
 }
