@@ -12,7 +12,8 @@
 // de la journée, pas seulement une fois par jour.
 
 import { NextResponse } from "next/server";
-import { collectLatest, DOMAINS } from "../../../../lib/entsoe";
+import { collectCountryForRange, DOMAINS } from "../../../../lib/entsoe";
+import { berlinMidnightUTC } from "../../../../lib/tz";
 import { upsertPrices, upsertGeneration, upsertLoad } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +27,14 @@ function isAuthorized(request) {
   return auth === `Bearer ${secret}` || searchParams.get("secret") === secret;
 }
 
+// Fenêtre volontairement plus légère que collectLatest() (aujourd'hui +
+// demain, pas hier->demain): "hier" est déjà couvert par le cron quotidien,
+// inutile de le re-scanner à chaque appel toutes les 20 min. Réduit le
+// volume de données pour rester sous la limite de 60s sur les 4 marchés.
 async function collectOne(country) {
-  const data = await collectLatest(country);
+  const periodStart = berlinMidnightUTC(0);
+  const periodEnd = berlinMidnightUTC(-1);
+  const data = await collectCountryForRange(country, periodStart, periodEnd);
   const nPrices = await upsertPrices(country, data.prices);
   const nGen = await upsertGeneration(country, data.generation);
   const nLoad = await upsertLoad(country, data.load);
