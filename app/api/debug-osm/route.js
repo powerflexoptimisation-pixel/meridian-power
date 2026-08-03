@@ -4,11 +4,12 @@ export const maxDuration = 60;
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const bbox = searchParams.get("bbox") || "51.7,5.9,55.1,10.5";
-  const query = `[out:json][timeout:40];(node["generator:source"="wind"](${bbox}););out body;`;
+  const bbox = searchParams.get("bbox") || "53.0,7.5,53.5,8.5";
+  const mirror = searchParams.get("mirror") || "https://overpass-api.de/api/interpreter";
+  const query = `[out:json][timeout:25];(node["generator:source"="wind"](${bbox}););out body;`;
   const start = Date.now();
   try {
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
+    const res = await fetch(mirror, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "MeridianPower/1.0 (energy market data platform; contact: power.flex.optimisation@gmail.com)", "Accept": "application/json" },
       body: "data=" + encodeURIComponent(query),
@@ -16,10 +17,10 @@ export async function GET(request) {
     const text = await res.text();
     const ms = Date.now() - start;
     let json;
-    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, ms, rawTextStart: text.slice(0, 300) }); }
+    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, ms, mirror, rawTextStart: text.slice(0, 300) }); }
     const elements = json.elements || [];
-    return NextResponse.json({ status: res.status, ms, count: elements.length });
+    return NextResponse.json({ status: res.status, ms, mirror, count: elements.length });
   } catch (err) {
-    return NextResponse.json({ error: String(err.message || err), ms: Date.now() - start }, { status: 502 });
+    return NextResponse.json({ error: String(err.message || err), ms: Date.now() - start, mirror }, { status: 502 });
   }
 }
