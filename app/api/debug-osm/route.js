@@ -3,13 +3,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET() {
+  // Allemagne entière via le polygone administratif OSM (area) plutôt
+  // qu'une bbox rectangulaire (qui inclurait des pays voisins).
   const query = `
-    [out:json][timeout:25];
+    [out:json][timeout:50];
+    area["ISO3166-1"="DE"][admin_level=2]->.de;
     (
-      node["generator:source"="wind"](53.0,7.5,53.5,8.5);
+      node["generator:source"="wind"](area.de);
     );
     out body;
   `;
+  const start = Date.now();
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
@@ -17,17 +21,13 @@ export async function GET() {
       body: "data=" + encodeURIComponent(query),
     });
     const text = await res.text();
+    const ms = Date.now() - start;
     let json;
-    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, rawTextStart: text.slice(0, 500) }); }
+    try { json = JSON.parse(text); } catch { return NextResponse.json({ status: res.status, ms, rawTextStart: text.slice(0, 500) }); }
     const elements = json.elements || [];
     const withOutput = elements.filter((e) => e.tags?.["generator:output:electricity"]);
-    return NextResponse.json({
-      status: res.status,
-      count: elements.length,
-      with_capacity_tag: withOutput.length,
-      sample: elements.slice(0, 5).map((e) => ({ lat: e.lat, lon: e.lon, tags: e.tags })),
-    });
+    return NextResponse.json({ status: res.status, ms, count: elements.length, with_capacity_tag: withOutput.length });
   } catch (err) {
-    return NextResponse.json({ error: String(err.message || err) }, { status: 502 });
+    return NextResponse.json({ error: String(err.message || err), ms: Date.now() - start }, { status: 502 });
   }
 }
