@@ -1,0 +1,29 @@
+name: Collect ENTSO-E realtime (today's actuals)
+
+# Comble un trou architectural trouvé lors d'un diagnostic utilisateur:
+# le cron quotidien (0 13 * * * côté Vercel + collect-during-auction.yml)
+# ne récupère que "hier" — les données d'AUJOURD'HUI (prix, génération,
+# charge) n'atteignaient donc la base qu'avec ~24-37h de retard, même si
+# ENTSO-E les publie en quasi temps réel (~15-30 min). Ce workflow
+# persiste régulièrement les données du jour en base (market_prices/
+# market_generation/market_load), pour les 4 marchés.
+#
+# Décalé de l'heure/quart d'heure pile (voir own-forecast.yml pour le
+# constat détaillé sur la fiabilité des schedule triggers GitHub).
+
+on:
+  schedule:
+    - cron: "11,31,51 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call collect-entsoe-realtime endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" -X GET "https://meridian-power.vercel.app/api/cron/collect-entsoe-realtime" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $HTTP_CODE"
+          cat response.json
+          if [ "$HTTP_CODE" -ge 400 ]; then exit 1; fi
