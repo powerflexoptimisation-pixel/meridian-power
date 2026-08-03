@@ -10,10 +10,19 @@ name: Own forecast refresh (Forecast for Trading)
 # recalibré aussi souvent — /api/admin/calibrate-own-forecast est à
 # relancer manuellement de temps en temps (le mix de capacité installée
 # évolue lentement), pas via ce workflow.
+#
+# FIABILITÉ: GitHub documente explicitement que les schedule triggers
+# "peuvent être retardés en période de forte charge, notamment au début de
+# chaque heure" — observé en pratique: écarts de 5 à 12h30 entre exécutions
+# censées être horaires (voir historique des runs). cron à ":23" plutôt que
+# ":00" pour éviter le pic de charge documenté au sommet de l'heure — atténue
+# mais ne résout pas complètement le problème (best-effort par design côté
+# GitHub). Si la fraîcheur horaire s'avère critique, migrer vers un
+# scheduler dédié (ex: cron-job.org) qui déclenche cette même route par HTTP.
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "23 * * * *"
   workflow_dispatch: {}
 
 jobs:
