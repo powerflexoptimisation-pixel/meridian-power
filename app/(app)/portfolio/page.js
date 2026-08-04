@@ -533,130 +533,245 @@ function TreeTab() {
   );
 }
 
-// ---------------- Timeseries tab ----------------
-function TimeseriesTab({ assets }) {
-  const [assetId, setAssetId] = useState("");
-  const [date, setDate] = useState(isoDaysAgo(0));
-  const [points, setPoints] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+// ---------------- Timeseries Explorer (multi-node, multi-série, multi-résolution) ----------------
+const SERIES_DEFS = [
+  { key: "forecast", label: "Forecast" },
+  { key: "actual", label: "Actual" },
+  { key: "traded_da", label: "Traded DA" },
+  { key: "traded_id", label: "Traded ID" },
+  { key: "nominated_ppa", label: "PPA" },
+  { key: "open_position", label: "Open Position" },
+];
+const RESOLUTION_OPTIONS = [
+  { key: "15m", label: "15 min" },
+  { key: "30m", label: "30 min" },
+  { key: "1h", label: "1 heure" },
+  { key: "4h", label: "4 heures" },
+  { key: "1D", label: "1 jour" },
+  { key: "1W", label: "1 semaine" },
+  { key: "1M", label: "1 mois" },
+  { key: "1Q", label: "1 trimestre" },
+  { key: "1Y", label: "1 an" },
+];
+const PALETTE = ["#E8C468", "#3FA796", "#4A94C4", "#8B6FC9", "#C97A5A", "#F87171", "#4ADE80", "#60A5FA", "#FBBF24", "#F472B6"];
+
+function formatBucketLabel(iso, resolution) {
+  const d = new Date(iso);
+  if (["15m", "30m", "1h", "4h"].includes(resolution)) {
+    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+  if (resolution === "1D") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  if (resolution === "1W") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) + " (sem.)";
+  if (resolution === "1M") return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+  if (resolution === "1Q") return `T${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}`;
+  if (resolution === "1Y") return `${d.getUTCFullYear()}`;
+  return iso;
+}
+
+function SelectableTreeNode({ label, sublabel, mw, nodeKey, depth, children, selected, onToggle, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen ?? depth < 1);
+  const hasChildren = !!children;
+  const isSelected = selected.has(nodeKey);
+  return (
+    <div style={{ marginLeft: depth * 16 }}>
+      <div className="flex items-center gap-2 py-1 pr-2 border-b border-[var(--mp-border)]">
+        {hasChildren ? (
+          <span className="text-[var(--mp-text-6)] text-xs w-3 cursor-pointer select-none" onClick={() => setOpen((o) => !o)}>{open ? "−" : "+"}</span>
+        ) : <span className="w-3" />}
+        <input type="checkbox" className="accent-amber-500 cursor-pointer" checked={isSelected} onChange={() => onToggle(nodeKey, label)} />
+        <span className="text-xs font-mono flex-1 truncate">{label}</span>
+        {sublabel && <span className="text-[10px] text-[var(--mp-text-6)] font-mono">{sublabel}</span>}
+        <span className="text-[10px] font-mono text-[var(--mp-text-6)] ml-2 shrink-0">{fmtNum(mw)} MW</span>
+      </div>
+      {hasChildren && open && <div>{children}</div>}
+    </div>
+  );
+}
+
+function TimeseriesExplorerTab() {
+  const [treeData, setTreeData] = useState(null);
+  const [loadingTree, setLoadingTree] = useState(true);
+  const [selected, setSelected] = useState(new Map()); // nodeKey -> label
+  const [seriesTypes, setSeriesTypes] = useState(["forecast", "actual"]);
+  const [resolution, setResolution] = useState("1h");
+  const [from, setFrom] = useState(isoDaysAgo(0));
+  const [to, setTo] = useState(isoDaysAgo(-1));
+  const [result, setResult] = useState(null);
+  const [loadingChart, setLoadingChart] = useState(false);
+  const [chartError, setChartError] = useState(null);
 
   useEffect(() => {
-    if (!assetId) return;
-    setLoading(true);
-    setError(null);
-    const from = `${date}T00:00:00.000Z`;
-    const to = `${date}T23:59:59.999Z`;
-    const params = new URLSearchParams({ asset_id: assetId, from, to });
-    fetch(`/api/portfolio/timeseries?${params.toString()}`)
+    fetch("/api/portfolio/tree")
       .then((r) => r.json())
-      .then((json) => { if (json.error) setError(json.error); else setPoints(json.points); })
-      .catch((e) => setError(String(e.message || e)))
-      .finally(() => setLoading(false));
-  }, [assetId, date]);
+      .then((json) => { if (!json.error) setTreeData(json.portfolio); })
+      .finally(() => setLoadingTree(false));
+  }, []);
 
-  const chartData = (points || []).map((p) => ({
-    time: new Date(p.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-    forecast: p.forecast ?? null,
-    actual: p.actual ?? null,
-    traded_da: p.traded_da ?? null,
-    traded_id: p.traded_id ?? null,
-    nominated_ppa: p.nominated_ppa ?? null,
-    open_position: p.open_position ?? null,
-  }));
+  function toggleNode(key, label) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(key)) next.delete(key); else next.set(key, label);
+      return next;
+    });
+  }
+
+  function toggleSeries(s) {
+    setSeriesTypes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
+  async function loadChart() {
+    if (selected.size === 0 || seriesTypes.length === 0) return;
+    setLoadingChart(true);
+    setChartError(null);
+    try {
+      const res = await fetch("/api/portfolio/node-timeseries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nodeKeys: [...selected.keys()],
+          seriesTypes,
+          resolution,
+          from: `${from}T00:00:00.000Z`,
+          to: `${to}T00:00:00.000Z`,
+        }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setResult(json);
+    } catch (err) {
+      setChartError(String(err.message || err));
+    } finally {
+      setLoadingChart(false);
+    }
+  }
+
+  const chartData = React.useMemo(() => {
+    if (!result) return [];
+    const allTs = new Set();
+    result.series.forEach((s) => s.points.forEach((p) => allTs.add(p.t)));
+    const sortedTs = [...allTs].sort();
+    const seriesMaps = result.series.map((s) => ({
+      key: `${s.node_key}__${s.series_type}`,
+      map: new Map(s.points.map((p) => [p.t, p.value])),
+    }));
+    return sortedTs.map((t) => {
+      const row = { t: formatBucketLabel(t, resolution) };
+      seriesMaps.forEach((sm) => { row[sm.key] = sm.map.get(t) ?? null; });
+      return row;
+    });
+  }, [result, resolution]);
+
+  const lineDefs = result
+    ? result.series.map((s, i) => ({
+        key: `${s.node_key}__${s.series_type}`,
+        label: `${s.label} · ${SERIES_DEFS.find((d) => d.key === s.series_type)?.label || s.series_type}`,
+        color: PALETTE[i % PALETTE.length],
+      }))
+    : [];
+
+  function renderNode(node, depth, keyPrefix) {
+    return (
+      <SelectableTreeNode key={keyPrefix} label={node.label} sublabel={node.sublabel} mw={node.mw} nodeKey={node.key} depth={depth} selected={selected} onToggle={toggleNode} defaultOpen={depth < 1}>
+        {node.children && node.children.length > 0 ? node.children.map((c, i) => renderNode(c, depth + 1, `${keyPrefix}-${i}`)) : undefined}
+      </SelectableTreeNode>
+    );
+  }
+
+  // Construit l'arbre de sélection { key, label, sublabel, mw, children } à partir de /api/portfolio/tree.
+  const selectionTree = treeData
+    ? {
+        key: "portfolio", label: "Portfolio", sublabel: `${treeData.asset_count} actifs`, mw: treeData.capacity_mw,
+        children: treeData.tso_nodes.map((tso) => ({
+          key: `tso|${tso.country}|${tso.tso}`, label: tso.tso, sublabel: tso.country, mw: tso.capacity_mw,
+          children: tso.technologies.map((tech) => ({
+            key: `tech|${tso.country}|${tso.tso}|${tech.asset_type}`,
+            label: ASSET_TYPES.find((t) => t.key === tech.asset_type)?.label || tech.asset_type,
+            mw: tech.capacity_mw,
+            children: tech.assets.map((a) => ({ key: `asset|${a.id}`, label: a.name, sublabel: a.status, mw: a.capacity_mw })),
+          })),
+        })),
+      }
+    : null;
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Timeseries par actif</h3>
-      <div className="flex flex-wrap items-end gap-3 border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
-        <div>
-          <label className={labelCls}>Actif</label>
-          <select className={inputCls} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
-            <option value="">— choisir —</option>
-            {assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+      <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Explorateur de séries temporelles</h3>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+        {/* Sélection des noeuds */}
+        <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-2 max-h-[420px] overflow-y-auto">
+          <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide px-1 pb-1">
+            Noeuds ({selected.size} sélectionné{selected.size > 1 ? "s" : ""})
+          </div>
+          {loadingTree ? (
+            <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-6">Chargement...</div>
+          ) : selectionTree ? (
+            renderNode(selectionTree, 0, "root")
+          ) : null}
         </div>
-        <div>
-          <label className={labelCls}>Date</label>
-          <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+
+        {/* Contrôles + graphique */}
+        <div className="space-y-3">
+          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4 space-y-3">
+            <div>
+              <label className={labelCls}>Séries</label>
+              <div className="flex flex-wrap gap-3">
+                {SERIES_DEFS.map((s) => (
+                  <label key={s.key} className="flex items-center gap-1.5 text-xs font-mono text-[var(--mp-text-3)] cursor-pointer">
+                    <input type="checkbox" className="accent-amber-500" checked={seriesTypes.includes(s.key)} onChange={() => toggleSeries(s.key)} />
+                    {s.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className={labelCls}>Résolution</label>
+                <select className={inputCls} value={resolution} onChange={(e) => setResolution(e.target.value)}>
+                  {RESOLUTION_OPTIONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Du</label>
+                <input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Au</label>
+                <input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} />
+              </div>
+              <button className={btnCls} onClick={loadChart} disabled={loadingChart || selected.size === 0 || seriesTypes.length === 0}>
+                {loadingChart ? "..." : "Charger"}
+              </button>
+            </div>
+            {selected.size === 0 && <div className="text-[10px] font-mono text-[var(--mp-text-6)]">Sélectionne au moins un noeud à gauche.</div>}
+            {chartError && <div className="text-xs font-mono text-red-400">{chartError}</div>}
+          </div>
+
+          {result && (
+            <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
+              <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">
+                Valeurs en {result.unit} {result.unit === "MWh" ? "(volume cumulé par pas)" : "(puissance moyenne par pas)"}
+              </div>
+              {chartData.length === 0 ? (
+                <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Aucune donnée sur cette période/résolution.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={340}>
+                  <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                    <XAxis dataKey="t" tick={{ fontSize: 9, fontFamily: "monospace" }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} label={{ value: result.unit, angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--mp-text-6)" }} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => v === null ? "—" : `${fmtNum(v)} ${result.unit}`} />
+                    <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
+                    {lineDefs.map((l) => (
+                      <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color} strokeWidth={1.75} dot={chartData.length < 40} isAnimationActive={false} connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          )}
         </div>
       </div>
-
-      {error && <div className="border border-red-500/40 text-red-400 text-xs font-mono px-4 py-3">{error}</div>}
-      {!assetId && <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Sélectionne un actif pour voir ses séries temporelles.</div>}
-      {loading && <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Chargement...</div>}
-
-      {points && !loading && points.length === 0 && (
-        <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8 border border-[var(--mp-border)] bg-[var(--mp-panel)]">
-          Aucune donnée pour cet actif à cette date.
-        </div>
-      )}
-
-      {points && points.length > 0 && !loading && (
-        <>
-          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
-            <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">Puissance (MW) — Forecast vs Actual vs Traded</div>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                <XAxis dataKey="time" tick={{ fontSize: 10, fontFamily: "monospace" }} interval={2} />
-                <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
-                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
-                <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#8FA8C7" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />
-                <Line type="monotone" dataKey="actual" name="Actual" stroke="#E8C468" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-                <Line type="monotone" dataKey="traded_da" name="Traded DA" stroke="#3FA796" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
-                <Line type="monotone" dataKey="traded_id" name="Traded ID" stroke="#4A94C4" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
-                <Line type="monotone" dataKey="nominated_ppa" name="PPA" stroke="#8B6FC9" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
-            <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">Open Position (MW)</div>
-            <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
-                <XAxis dataKey="time" tick={{ fontSize: 10, fontFamily: "monospace" }} interval={2} />
-                <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
-                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
-                <Line type="monotone" dataKey="open_position" name="Open Position" stroke="#F87171" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] overflow-x-auto max-h-72 overflow-y-auto">
-            <table className="w-full text-xs font-mono">
-              <thead className="sticky top-0 bg-[var(--mp-panel)]">
-                <tr className="border-b border-[var(--mp-border)] text-[var(--mp-text-6)] uppercase tracking-wide">
-                  <th className="text-left px-3 py-2">Heure</th>
-                  <th className="text-right px-3 py-2">Forecast</th>
-                  <th className="text-right px-3 py-2">Actual</th>
-                  <th className="text-right px-3 py-2">Traded DA</th>
-                  <th className="text-right px-3 py-2">Traded ID</th>
-                  <th className="text-right px-3 py-2">PPA</th>
-                  <th className="text-right px-3 py-2">Open Pos.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chartData.map((p, i) => (
-                  <tr key={i} className="border-b border-[var(--mp-border)] text-[var(--mp-text-3)]">
-                    <td className="px-3 py-1.5">{p.time}</td>
-                    <td className="px-3 py-1.5 text-right">{fmtNum(p.forecast)}</td>
-                    <td className="px-3 py-1.5 text-right">{fmtNum(p.actual)}</td>
-                    <td className="px-3 py-1.5 text-right">{fmtNum(p.traded_da)}</td>
-                    <td className="px-3 py-1.5 text-right">{fmtNum(p.traded_id)}</td>
-                    <td className="px-3 py-1.5 text-right">{fmtNum(p.nominated_ppa)}</td>
-                    <td className={`px-3 py-1.5 text-right ${p.open_position >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {p.open_position >= 0 ? "+" : ""}{fmtNum(p.open_position)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -722,8 +837,7 @@ export default function PortfolioPage() {
           <button className={tabCls(tab === "assets")} onClick={() => setTab("assets")}>Actifs</button>
           <button className={tabCls(tab === "ppa")} onClick={() => setTab("ppa")}>PPA</button>
           <button className={tabCls(tab === "pnl")} onClick={() => setTab("pnl")}>P&amp;L</button>
-          <button className={tabCls(tab === "timeseries")} onClick={() => setTab("timeseries")}>Timeseries</button>
-          <button className={tabCls(tab === "tree")} onClick={() => setTab("tree")}>Arbre</button>
+          <button className={tabCls(tab === "tree")} onClick={() => setTab("tree")}>Arbre &amp; Timeseries</button>
         </div>
 
         {tab === "assets" && (
@@ -733,8 +847,12 @@ export default function PortfolioPage() {
           <PPATab assets={assets} ppas={ppas} loading={loadingPpas} error={ppasError} onCreated={loadPpas} onDeleted={loadPpas} />
         )}
         {tab === "pnl" && <PnlTab assets={assets} />}
-        {tab === "timeseries" && <TimeseriesTab assets={assets} />}
-        {tab === "tree" && <TreeTab />}
+        {tab === "tree" && (
+          <div className="space-y-8">
+            <TreeTab />
+            <TimeseriesExplorerTab />
+          </div>
+        )}
       </main>
     </div>
   );
