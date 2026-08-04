@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS assets (
   name            VARCHAR(160) NOT NULL,
   asset_type      VARCHAR(20) NOT NULL,  -- wind | pv | bess | flexible | dsm
   country         VARCHAR(2) NOT NULL,
+  tso             VARCHAR(40),           -- 50Hertz | Amprion | TenneT TSO | TransnetBW | RTE | Terna | REE
   capacity_mw     NUMERIC(10, 3) NOT NULL,
   capacity_mwh    NUMERIC(10, 3),        -- pertinent pour BESS
   commissioning_date DATE,
@@ -173,6 +174,7 @@ CREATE TABLE IF NOT EXISTS assets (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_assets_country_type ON assets (country, asset_type);
+CREATE INDEX IF NOT EXISTS idx_assets_tso ON assets (tso);
 
 CREATE TABLE IF NOT EXISTS ppa_contracts (
   id                SERIAL PRIMARY KEY,

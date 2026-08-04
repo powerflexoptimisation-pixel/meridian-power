@@ -25,6 +25,7 @@ const STATEMENTS = [
     name            VARCHAR(160) NOT NULL,
     asset_type      VARCHAR(20) NOT NULL,
     country         VARCHAR(2) NOT NULL,
+    tso             VARCHAR(40),
     capacity_mw     NUMERIC(10, 3) NOT NULL,
     capacity_mwh    NUMERIC(10, 3),
     commissioning_date DATE,
@@ -33,7 +34,9 @@ const STATEMENTS = [
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE assets ADD COLUMN IF NOT EXISTS tso VARCHAR(40)`,
   `CREATE INDEX IF NOT EXISTS idx_assets_country_type ON assets (country, asset_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_assets_tso ON assets (tso)`,
   `CREATE TABLE IF NOT EXISTS ppa_contracts (
     id                SERIAL PRIMARY KEY,
     asset_id          INTEGER REFERENCES assets(id) ON DELETE SET NULL,

@@ -12,6 +12,12 @@ const ASSET_TYPES = [
 ];
 const PPA_STRUCTURES = ["fixed", "floating", "cap_floor", "pay_as_produced", "baseload"];
 const COUNTRIES = ["DE", "FR", "IT", "ES"];
+const TSO_BY_COUNTRY = {
+  DE: ["50Hertz", "Amprion", "TenneT TSO", "TransnetBW"],
+  FR: ["RTE"],
+  IT: ["Terna"],
+  ES: ["REE"],
+};
 
 function typeColor(t) {
   return ASSET_TYPES.find((a) => a.key === t)?.color || "var(--mp-text-4)";
@@ -37,7 +43,7 @@ const tabCls = (active) =>
 
 // ---------------- Assets tab ----------------
 function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
-  const [form, setForm] = useState({ name: "", asset_type: "wind", country: "DE", capacity_mw: "", capacity_mwh: "" });
+  const [form, setForm] = useState({ name: "", asset_type: "wind", country: "DE", tso: "", capacity_mw: "", capacity_mwh: "" });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -52,13 +58,14 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          tso: form.tso || null,
           capacity_mw: Number(form.capacity_mw),
           capacity_mwh: form.capacity_mwh ? Number(form.capacity_mwh) : null,
         }),
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
-      setForm({ name: "", asset_type: "wind", country: "DE", capacity_mw: "", capacity_mwh: "" });
+      setForm({ name: "", asset_type: "wind", country: "DE", tso: "", capacity_mw: "", capacity_mwh: "" });
       setShowForm(false);
       onCreated();
     } catch (err) {
@@ -84,7 +91,7 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
       </div>
 
       {showForm && (
-        <form onSubmit={submit} className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+        <form onSubmit={submit} className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
           <div>
             <label className={labelCls}>Nom</label>
             <input required className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -99,8 +106,15 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
           </div>
           <div>
             <label className={labelCls}>Pays</label>
-            <select className={inputCls} value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })}>
+            <select className={inputCls} value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value, tso: "" })}>
               {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>TSO</label>
+            <select className={inputCls} value={form.tso} onChange={(e) => setForm({ ...form, tso: e.target.value })}>
+              <option value="">— non assigné —</option>
+              {(TSO_BY_COUNTRY[form.country] || []).map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
@@ -111,7 +125,7 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
             <label className={labelCls}>Capacité (MWh, BESS)</label>
             <input type="number" step="0.01" className={inputCls} value={form.capacity_mwh} onChange={(e) => setForm({ ...form, capacity_mwh: e.target.value })} />
           </div>
-          <div className="col-span-2 md:col-span-5 flex items-center gap-3">
+          <div className="col-span-2 md:col-span-6 flex items-center gap-3">
             <button disabled={submitting} className={btnCls} type="submit">{submitting ? "..." : "Créer"}</button>
             {formError && <span className="text-xs font-mono text-red-400">{formError}</span>}
           </div>
@@ -127,6 +141,7 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
               <th className="text-left px-3 py-2">Nom</th>
               <th className="text-left px-3 py-2">Type</th>
               <th className="text-left px-3 py-2">Pays</th>
+              <th className="text-left px-3 py-2">TSO</th>
               <th className="text-right px-3 py-2">MW</th>
               <th className="text-right px-3 py-2">MWh</th>
               <th className="text-left px-3 py-2">Statut</th>
@@ -135,15 +150,16 @@ function AssetsTab({ assets, loading, error, onCreated, onDeleted }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="text-center text-[var(--mp-text-6)] py-6">Chargement...</td></tr>
+              <tr><td colSpan={8} className="text-center text-[var(--mp-text-6)] py-6">Chargement...</td></tr>
             ) : (assets || []).length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-[var(--mp-text-6)] py-6">Aucun actif. Ajoute-en un ci-dessus.</td></tr>
+              <tr><td colSpan={8} className="text-center text-[var(--mp-text-6)] py-6">Aucun actif. Ajoute-en un ci-dessus.</td></tr>
             ) : (
               assets.map((a) => (
                 <tr key={a.id} className="border-b border-[var(--mp-border)] text-[var(--mp-text-3)] hover:bg-[var(--mp-panel-alt)]">
                   <td className="px-3 py-2">{a.name}</td>
                   <td className="px-3 py-2"><span style={{ color: typeColor(a.asset_type) }}>{a.asset_type}</span></td>
                   <td className="px-3 py-2">{a.country}</td>
+                  <td className="px-3 py-2 text-[var(--mp-text-5)]">{a.tso || "—"}</td>
                   <td className="px-3 py-2 text-right">{fmtNum(a.capacity_mw)}</td>
                   <td className="px-3 py-2 text-right">{fmtNum(a.capacity_mwh)}</td>
                   <td className="px-3 py-2 text-[var(--mp-text-5)]">{a.status}</td>
@@ -390,6 +406,95 @@ function PnlTab({ assets }) {
   );
 }
 
+// ---------------- Tree tab ----------------
+function TreeNode({ label, sublabel, mw, color, depth, children, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen ?? depth < 2);
+  const hasChildren = !!children;
+  return (
+    <div style={{ marginLeft: depth * 18 }}>
+      <div
+        className={`flex items-center justify-between py-1.5 pr-2 border-b border-[var(--mp-border)] ${hasChildren ? "cursor-pointer hover:bg-[var(--mp-panel-alt)]" : ""}`}
+        onClick={() => hasChildren && setOpen((o) => !o)}
+      >
+        <div className="flex items-center gap-2">
+          {hasChildren && <span className="text-[var(--mp-text-6)] text-xs w-3">{open ? "−" : "+"}</span>}
+          {!hasChildren && <span className="w-3" />}
+          <span className="text-xs font-mono" style={{ color: color || "var(--mp-text-2)" }}>{label}</span>
+          {sublabel && <span className="text-[10px] text-[var(--mp-text-6)] font-mono">{sublabel}</span>}
+        </div>
+        <span className="text-xs font-mono text-[var(--mp-text-4)]">{fmtNum(mw)} MW</span>
+      </div>
+      {hasChildren && open && <div>{children}</div>}
+    </div>
+  );
+}
+
+function TreeTab() {
+  const [tree, setTree] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [country, setCountry] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams(country ? { country } : {});
+    fetch(`/api/portfolio/tree?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => { if (json.error) setError(json.error); else setTree(json.portfolio); })
+      .catch((e) => setError(String(e.message || e)))
+      .finally(() => setLoading(false));
+  }, [country]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Portfolio → TSO → Technologie</h3>
+        <select className={inputCls + " w-auto"} value={country} onChange={(e) => setCountry(e.target.value)}>
+          <option value="">Tous les pays</option>
+          {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {error && <div className="border border-red-500/40 text-red-400 text-xs font-mono px-4 py-3">{error}</div>}
+      {loading && <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Chargement...</div>}
+
+      {tree && !loading && (
+        <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-2">
+          <TreeNode label="Portfolio" sublabel={`${tree.asset_count} actifs`} mw={tree.capacity_mw} depth={0} defaultOpen>
+            {tree.tso_nodes.length === 0 ? (
+              <div className="pl-6 py-4 text-xs font-mono text-[var(--mp-text-6)]">Aucun actif à agréger.</div>
+            ) : (
+              tree.tso_nodes.map((tso) => (
+                <TreeNode
+                  key={`${tso.country}::${tso.tso}`}
+                  label={tso.tso}
+                  sublabel={tso.country}
+                  mw={tso.capacity_mw}
+                  depth={1}
+                >
+                  {tso.technologies.map((tech) => (
+                    <TreeNode
+                      key={tech.asset_type}
+                      label={ASSET_TYPES.find((t) => t.key === tech.asset_type)?.label || tech.asset_type}
+                      color={typeColor(tech.asset_type)}
+                      mw={tech.capacity_mw}
+                      depth={2}
+                    >
+                      {tech.assets.map((a) => (
+                        <TreeNode key={a.id} label={a.name} sublabel={a.status} mw={a.capacity_mw} depth={3} />
+                      ))}
+                    </TreeNode>
+                  ))}
+                </TreeNode>
+              ))
+            )}
+          </TreeNode>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------- Page ----------------
 export default function PortfolioPage() {
   const [tab, setTab] = useState("assets");
@@ -451,6 +556,7 @@ export default function PortfolioPage() {
           <button className={tabCls(tab === "assets")} onClick={() => setTab("assets")}>Actifs</button>
           <button className={tabCls(tab === "ppa")} onClick={() => setTab("ppa")}>PPA</button>
           <button className={tabCls(tab === "pnl")} onClick={() => setTab("pnl")}>P&amp;L</button>
+          <button className={tabCls(tab === "tree")} onClick={() => setTab("tree")}>Arbre</button>
         </div>
 
         {tab === "assets" && (
@@ -460,6 +566,7 @@ export default function PortfolioPage() {
           <PPATab assets={assets} ppas={ppas} loading={loadingPpas} error={ppasError} onCreated={loadPpas} onDeleted={loadPpas} />
         )}
         {tab === "pnl" && <PnlTab assets={assets} />}
+        {tab === "tree" && <TreeTab />}
       </main>
     </div>
   );
