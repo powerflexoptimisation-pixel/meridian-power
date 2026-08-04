@@ -37,11 +37,14 @@ function isoDaysAgo(n) {
 // convertUnit() avant rendu — c'est le point unique de vérité pour la
 // correspondance grandeur physique <-> unité choisie. Ne jamais multiplier/
 // diviser une valeur inline ailleurs dans le composant.
-const POWER_UNITS = ["kW", "MW", "GW"];
-const ENERGY_UNITS = ["kWh", "MWh", "GWh", "TWh"];
+const POWER_UNITS = ["W", "kW", "MW", "GW", "TW"];
+const ENERGY_UNITS = ["Wh", "kWh", "MWh", "GWh", "TWh"];
 // Facteurs relatifs à l'unité de base retournée par l'API (MW pour la
 // puissance, MWh pour l'énergie) = 1.
-const UNIT_FACTORS = { kW: 1000, MW: 1, GW: 0.001, kWh: 1000, MWh: 1, GWh: 0.001, TWh: 0.000001 };
+const UNIT_FACTORS = {
+  W: 1_000_000, kW: 1000, MW: 1, GW: 0.001, TW: 0.000001,
+  Wh: 1_000_000, kWh: 1000, MWh: 1, GWh: 0.001, TWh: 0.000001,
+};
 
 function isEnergyUnit(unit) {
   return ENERGY_UNITS.includes(unit);
