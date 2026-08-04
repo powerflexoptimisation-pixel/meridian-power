@@ -597,12 +597,16 @@ const PALETTE = ["#E8C468", "#3FA796", "#4A94C4", "#8B6FC9", "#C97A5A", "#F87171
 
 function formatBucketLabel(iso, resolution) {
   const d = new Date(iso);
+  // timeZone: "UTC" explicite partout — les timestamps en base sont en UTC
+  // (ENTSO-E, marché day-ahead), donc l'affichage doit rester en UTC quel
+  // que soit le fuseau du navigateur, pour ne jamais désynchroniser
+  // l'étiquette du point réel qu'elle représente.
   if (["15m", "30m", "1h", "4h"].includes(resolution)) {
-    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + "z";
   }
-  if (resolution === "1D") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-  if (resolution === "1W") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) + " (sem.)";
-  if (resolution === "1M") return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+  if (resolution === "1D") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "UTC" });
+  if (resolution === "1W") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) + " (sem.)";
+  if (resolution === "1M") return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit", timeZone: "UTC" });
   if (resolution === "1Q") return `T${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}`;
   if (resolution === "1Y") return `${d.getUTCFullYear()}`;
   return iso;
