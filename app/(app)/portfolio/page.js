@@ -32,6 +32,37 @@ function isoDaysAgo(n) {
   return d.toISOString().slice(0, 10);
 }
 
+// ---------------- Unité: fonction de conversion standardisée ----------------
+// Toute valeur affichée (Explorateur, Arbre, futurs exports) doit passer par
+// convertUnit() avant rendu — c'est le point unique de vérité pour la
+// correspondance grandeur physique <-> unité choisie. Ne jamais multiplier/
+// diviser une valeur inline ailleurs dans le composant.
+const POWER_UNITS = ["kW", "MW", "GW"];
+const ENERGY_UNITS = ["kWh", "MWh", "GWh", "TWh"];
+// Facteurs relatifs à l'unité de base retournée par l'API (MW pour la
+// puissance, MWh pour l'énergie) = 1.
+const UNIT_FACTORS = { kW: 1000, MW: 1, GW: 0.001, kWh: 1000, MWh: 1, GWh: 0.001, TWh: 0.000001 };
+
+function isEnergyUnit(unit) {
+  return ENERGY_UNITS.includes(unit);
+}
+function unitOptionsFor(baseUnit) {
+  return baseUnit === "MWh" ? ENERGY_UNITS : POWER_UNITS;
+}
+// value: nombre dans l'unité de base (MW ou MWh) telle que renvoyée par l'API.
+// baseUnit: "MW" | "MWh" — l'unité de base de `value`.
+// targetUnit: une des 7 unités supportées, DOIT être du même type physique que baseUnit
+//             (puissance -> puissance, énergie -> énergie); sinon retourne null (garde-fou).
+function convertUnit(value, baseUnit, targetUnit) {
+  if (value === null || value === undefined) return null;
+  const baseIsEnergy = baseUnit === "MWh";
+  const targetIsEnergy = isEnergyUnit(targetUnit);
+  if (baseIsEnergy !== targetIsEnergy) return null; // conversion incohérente (puissance <-> énergie), refusée
+  const factor = UNIT_FACTORS[targetUnit];
+  if (factor === undefined) return null;
+  return value * factor;
+}
+
 const inputCls =
   "bg-[var(--mp-bg-deep)] border border-[var(--mp-border)] text-[var(--mp-text-3)] px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-amber-400 w-full";
 const labelCls = "text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide block mb-1";
@@ -417,20 +448,20 @@ const METRIC_DEFS = [
   { key: "open_position", label: "Open Pos.", color: null },
 ];
 
-function MetricsRow({ metrics }) {
+function MetricsRow({ metrics, unit }) {
   if (!metrics) return null;
   const hasAny = Object.values(metrics).some((v) => v !== 0);
   if (!hasAny) return null;
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-5 pb-1.5">
       {METRIC_DEFS.map((m) => {
-        const v = metrics[m.key];
-        if (v === undefined) return null;
+        const v = convertUnit(metrics[m.key], "MWh", unit);
+        if (v === null || v === undefined) return null;
         const isOpen = m.key === "open_position";
         const color = isOpen ? (v >= 0 ? "#4ADE80" : "#F87171") : m.color;
         return (
           <span key={m.key} className="text-[10px] font-mono" style={{ color: color || "var(--mp-text-6)" }}>
-            {m.label}: {isOpen && v >= 0 ? "+" : ""}{fmtNum(v)} MWh
+            {m.label}: {isOpen && v >= 0 ? "+" : ""}{fmtNum(v, 3)} {unit}
           </span>
         );
       })}
@@ -438,7 +469,7 @@ function MetricsRow({ metrics }) {
   );
 }
 
-function TreeNode({ label, sublabel, mw, metrics, color, depth, children, defaultOpen }) {
+function TreeNode({ label, sublabel, mw, metrics, unit, color, depth, children, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen ?? depth < 2);
   const hasChildren = !!children;
   return (
@@ -455,7 +486,7 @@ function TreeNode({ label, sublabel, mw, metrics, color, depth, children, defaul
         </div>
         <span className="text-xs font-mono text-[var(--mp-text-4)]">{fmtNum(mw)} MW</span>
       </div>
-      <MetricsRow metrics={metrics} />
+      <MetricsRow metrics={metrics} unit={unit} />
       {hasChildren && open && <div>{children}</div>}
     </div>
   );
@@ -467,6 +498,7 @@ function TreeTab() {
   const [error, setError] = useState(null);
   const [country, setCountry] = useState("");
   const [date, setDate] = useState(isoDaysAgo(0));
+  const [unit, setUnit] = useState("MWh");
 
   useEffect(() => {
     setLoading(true);
@@ -488,6 +520,9 @@ function TreeTab() {
             <option value="">Tous les pays</option>
             {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          <select className={inputCls + " w-auto"} value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {ENERGY_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
         </div>
       </div>
 
@@ -496,7 +531,7 @@ function TreeTab() {
 
       {tree && !loading && (
         <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-2">
-          <TreeNode label="Portfolio" sublabel={`${tree.asset_count} actifs · ${date}`} mw={tree.capacity_mw} metrics={tree.metrics} depth={0} defaultOpen>
+          <TreeNode label="Portfolio" sublabel={`${tree.asset_count} actifs · ${date}`} mw={tree.capacity_mw} metrics={tree.metrics} unit={unit} depth={0} defaultOpen>
             {tree.tso_nodes.length === 0 ? (
               <div className="pl-6 py-4 text-xs font-mono text-[var(--mp-text-6)]">Aucun actif à agréger.</div>
             ) : (
@@ -507,6 +542,7 @@ function TreeTab() {
                   sublabel={tso.country}
                   mw={tso.capacity_mw}
                   metrics={tso.metrics}
+                  unit={unit}
                   depth={1}
                 >
                   {tso.technologies.map((tech) => (
@@ -516,10 +552,11 @@ function TreeTab() {
                       color={typeColor(tech.asset_type)}
                       mw={tech.capacity_mw}
                       metrics={tech.metrics}
+                      unit={unit}
                       depth={2}
                     >
                       {tech.assets.map((a) => (
-                        <TreeNode key={a.id} label={a.name} sublabel={a.status} mw={a.capacity_mw} metrics={a.metrics} depth={3} />
+                        <TreeNode key={a.id} label={a.name} sublabel={a.status} mw={a.capacity_mw} metrics={a.metrics} unit={unit} depth={3} />
                       ))}
                     </TreeNode>
                   ))}
@@ -588,11 +625,6 @@ function SelectableTreeNode({ label, sublabel, mw, nodeKey, depth, children, sel
   );
 }
 
-const POWER_UNITS = ["kW", "MW", "GW"];
-const ENERGY_UNITS = ["kWh", "MWh", "GWh", "TWh"];
-const POWER_FACTORS = { kW: 1000, MW: 1, GW: 0.001 };
-const ENERGY_FACTORS = { kWh: 1000, MWh: 1, GWh: 0.001, TWh: 0.000001 };
-
 function TimeseriesExplorerTab() {
   const [treeData, setTreeData] = useState(null);
   const [loadingTree, setLoadingTree] = useState(true);
@@ -608,8 +640,7 @@ function TimeseriesExplorerTab() {
   const [viewMode, setViewMode] = useState("chart"); // chart | table
 
   const isEnergyMode = result?.unit === "MWh";
-  const unitOptions = isEnergyMode ? ENERGY_UNITS : POWER_UNITS;
-  const unitFactor = (isEnergyMode ? ENERGY_FACTORS : POWER_FACTORS)[displayUnit] ?? 1;
+  const unitOptions = unitOptionsFor(result?.unit || "MW");
 
   useEffect(() => {
     if (result) setDisplayUnit(result.unit === "MWh" ? "MWh" : "MW");
@@ -673,11 +704,11 @@ function TimeseriesExplorerTab() {
       const row = { t: formatBucketLabel(t, resolution) };
       seriesMaps.forEach((sm) => {
         const raw = sm.map.get(t);
-        row[sm.key] = raw === undefined || raw === null ? null : Number((raw * unitFactor).toFixed(4));
+        row[sm.key] = convertUnit(raw, result.unit, displayUnit);
       });
       return row;
     });
-  }, [result, resolution, unitFactor]);
+  }, [result, resolution, displayUnit]);
 
   const lineDefs = result
     ? result.series.map((s, i) => ({
