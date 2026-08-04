@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ThemeToggle } from "../../theme-toggle";
 
 const ASSET_TYPES = [
@@ -532,6 +533,134 @@ function TreeTab() {
   );
 }
 
+// ---------------- Timeseries tab ----------------
+function TimeseriesTab({ assets }) {
+  const [assetId, setAssetId] = useState("");
+  const [date, setDate] = useState(isoDaysAgo(0));
+  const [points, setPoints] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!assetId) return;
+    setLoading(true);
+    setError(null);
+    const from = `${date}T00:00:00.000Z`;
+    const to = `${date}T23:59:59.999Z`;
+    const params = new URLSearchParams({ asset_id: assetId, from, to });
+    fetch(`/api/portfolio/timeseries?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => { if (json.error) setError(json.error); else setPoints(json.points); })
+      .catch((e) => setError(String(e.message || e)))
+      .finally(() => setLoading(false));
+  }, [assetId, date]);
+
+  const chartData = (points || []).map((p) => ({
+    time: new Date(p.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+    forecast: p.forecast ?? null,
+    actual: p.actual ?? null,
+    traded_da: p.traded_da ?? null,
+    traded_id: p.traded_id ?? null,
+    nominated_ppa: p.nominated_ppa ?? null,
+    open_position: p.open_position ?? null,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Timeseries par actif</h3>
+      <div className="flex flex-wrap items-end gap-3 border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
+        <div>
+          <label className={labelCls}>Actif</label>
+          <select className={inputCls} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+            <option value="">— choisir —</option>
+            {assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Date</label>
+          <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+      </div>
+
+      {error && <div className="border border-red-500/40 text-red-400 text-xs font-mono px-4 py-3">{error}</div>}
+      {!assetId && <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Sélectionne un actif pour voir ses séries temporelles.</div>}
+      {loading && <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Chargement...</div>}
+
+      {points && !loading && points.length === 0 && (
+        <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8 border border-[var(--mp-border)] bg-[var(--mp-panel)]">
+          Aucune donnée pour cet actif à cette date.
+        </div>
+      )}
+
+      {points && points.length > 0 && !loading && (
+        <>
+          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
+            <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">Puissance (MW) — Forecast vs Actual vs Traded</div>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                <XAxis dataKey="time" tick={{ fontSize: 10, fontFamily: "monospace" }} interval={2} />
+                <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
+                <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
+                <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#8FA8C7" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} connectNulls />
+                <Line type="monotone" dataKey="actual" name="Actual" stroke="#E8C468" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+                <Line type="monotone" dataKey="traded_da" name="Traded DA" stroke="#3FA796" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+                <Line type="monotone" dataKey="traded_id" name="Traded ID" stroke="#4A94C4" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+                <Line type="monotone" dataKey="nominated_ppa" name="PPA" stroke="#8B6FC9" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
+            <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">Open Position (MW)</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
+                <XAxis dataKey="time" tick={{ fontSize: 10, fontFamily: "monospace" }} interval={2} />
+                <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
+                <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} />
+                <Line type="monotone" dataKey="open_position" name="Open Position" stroke="#F87171" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] overflow-x-auto max-h-72 overflow-y-auto">
+            <table className="w-full text-xs font-mono">
+              <thead className="sticky top-0 bg-[var(--mp-panel)]">
+                <tr className="border-b border-[var(--mp-border)] text-[var(--mp-text-6)] uppercase tracking-wide">
+                  <th className="text-left px-3 py-2">Heure</th>
+                  <th className="text-right px-3 py-2">Forecast</th>
+                  <th className="text-right px-3 py-2">Actual</th>
+                  <th className="text-right px-3 py-2">Traded DA</th>
+                  <th className="text-right px-3 py-2">Traded ID</th>
+                  <th className="text-right px-3 py-2">PPA</th>
+                  <th className="text-right px-3 py-2">Open Pos.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chartData.map((p, i) => (
+                  <tr key={i} className="border-b border-[var(--mp-border)] text-[var(--mp-text-3)]">
+                    <td className="px-3 py-1.5">{p.time}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtNum(p.forecast)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtNum(p.actual)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtNum(p.traded_da)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtNum(p.traded_id)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtNum(p.nominated_ppa)}</td>
+                    <td className={`px-3 py-1.5 text-right ${p.open_position >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {p.open_position >= 0 ? "+" : ""}{fmtNum(p.open_position)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------------- Page ----------------
 export default function PortfolioPage() {
   const [tab, setTab] = useState("assets");
@@ -593,6 +722,7 @@ export default function PortfolioPage() {
           <button className={tabCls(tab === "assets")} onClick={() => setTab("assets")}>Actifs</button>
           <button className={tabCls(tab === "ppa")} onClick={() => setTab("ppa")}>PPA</button>
           <button className={tabCls(tab === "pnl")} onClick={() => setTab("pnl")}>P&amp;L</button>
+          <button className={tabCls(tab === "timeseries")} onClick={() => setTab("timeseries")}>Timeseries</button>
           <button className={tabCls(tab === "tree")} onClick={() => setTab("tree")}>Arbre</button>
         </div>
 
@@ -603,6 +733,7 @@ export default function PortfolioPage() {
           <PPATab assets={assets} ppas={ppas} loading={loadingPpas} error={ppasError} onCreated={loadPpas} onDeleted={loadPpas} />
         )}
         {tab === "pnl" && <PnlTab assets={assets} />}
+        {tab === "timeseries" && <TimeseriesTab assets={assets} />}
         {tab === "tree" && <TreeTab />}
       </main>
     </div>
