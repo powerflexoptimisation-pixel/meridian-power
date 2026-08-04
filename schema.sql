@@ -154,6 +154,75 @@ CREATE TABLE IF NOT EXISTS de_hochrechnung (
   value_mw  NUMERIC(10, 3),
   PRIMARY KEY (ts, product, tso)
 );
+-- ============================================================
+-- Portfolio Management (PPA, actifs wind/pv/BESS/flexibles/DSM)
+-- Voir lib/portfolio.js pour la couche d'accès et le calcul de P&L.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS assets (
+  id              SERIAL PRIMARY KEY,
+  name            VARCHAR(160) NOT NULL,
+  asset_type      VARCHAR(20) NOT NULL,  -- wind | pv | bess | flexible | dsm
+  country         VARCHAR(2) NOT NULL,
+  capacity_mw     NUMERIC(10, 3) NOT NULL,
+  capacity_mwh    NUMERIC(10, 3),        -- pertinent pour BESS
+  commissioning_date DATE,
+  status          VARCHAR(20) NOT NULL DEFAULT 'operational',
+  metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_assets_country_type ON assets (country, asset_type);
+
+CREATE TABLE IF NOT EXISTS ppa_contracts (
+  id                SERIAL PRIMARY KEY,
+  asset_id          INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+  counterparty      VARCHAR(160) NOT NULL,
+  structure         VARCHAR(20) NOT NULL,  -- fixed | floating | cap_floor | pay_as_produced | baseload
+  strike_price_eur_mwh NUMERIC(10, 2),
+  cap_eur_mwh       NUMERIC(10, 2),
+  floor_eur_mwh     NUMERIC(10, 2),
+  volume_mw         NUMERIC(10, 3),
+  start_date        DATE NOT NULL,
+  end_date          DATE NOT NULL,
+  country           VARCHAR(2) NOT NULL,
+  notes             TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ppa_asset ON ppa_contracts (asset_id);
+CREATE INDEX IF NOT EXISTS idx_ppa_dates ON ppa_contracts (start_date, end_date);
+
+CREATE TABLE IF NOT EXISTS asset_positions (
+  asset_id        INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  ts              TIMESTAMPTZ NOT NULL,
+  output_mw       NUMERIC(10, 3) NOT NULL,
+  PRIMARY KEY (asset_id, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_positions_asset_ts ON asset_positions (asset_id, ts);
+
+CREATE TABLE IF NOT EXISTS bess_dispatch (
+  asset_id        INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  ts              TIMESTAMPTZ NOT NULL,
+  power_mw        NUMERIC(10, 3) NOT NULL,  -- >0 décharge, <0 charge
+  soc_mwh         NUMERIC(10, 3),
+  mode            VARCHAR(20) NOT NULL DEFAULT 'planned',  -- planned | realized
+  PRIMARY KEY (asset_id, ts, mode)
+);
+CREATE INDEX IF NOT EXISTS idx_bess_asset_ts ON bess_dispatch (asset_id, ts);
+
+CREATE TABLE IF NOT EXISTS flex_availability (
+  id                SERIAL PRIMARY KEY,
+  asset_id          INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  start_ts          TIMESTAMPTZ NOT NULL,
+  end_ts            TIMESTAMPTZ NOT NULL,
+  available_mw      NUMERIC(10, 3) NOT NULL,
+  activation_cost_eur_mwh NUMERIC(10, 2),
+  direction         VARCHAR(10) NOT NULL DEFAULT 'down',  -- down | up
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_flex_asset_window ON flex_availability (asset_id, start_ts, end_ts);
+
 CREATE TABLE IF NOT EXISTS de_collection_log (
   id          SERIAL PRIMARY KEY,
   ran_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
