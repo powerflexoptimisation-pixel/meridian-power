@@ -14,8 +14,9 @@ export const fetchCache = "force-no-store";
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const country = searchParams.get("country")?.toUpperCase();
+  const date = searchParams.get("date");
   try {
-    const tree = await getPortfolioTree({ country });
+    const tree = await getPortfolioTree({ country, date });
     return NextResponse.json(tree);
   } catch (err) {
     return NextResponse.json({ error: String(err.message || err) }, { status: 502 });

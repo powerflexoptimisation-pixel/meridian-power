@@ -407,7 +407,37 @@ function PnlTab({ assets }) {
 }
 
 // ---------------- Tree tab ----------------
-function TreeNode({ label, sublabel, mw, color, depth, children, defaultOpen }) {
+const METRIC_DEFS = [
+  { key: "forecast", label: "Forecast", color: "#8FA8C7" },
+  { key: "actual", label: "Actual", color: "#E8C468" },
+  { key: "traded_da", label: "Traded DA", color: "#3FA796" },
+  { key: "traded_id", label: "Traded ID", color: "#4A94C4" },
+  { key: "nominated_ppa", label: "PPA", color: "#8B6FC9" },
+  { key: "open_position", label: "Open Pos.", color: null },
+];
+
+function MetricsRow({ metrics }) {
+  if (!metrics) return null;
+  const hasAny = Object.values(metrics).some((v) => v !== 0);
+  if (!hasAny) return null;
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-5 pb-1.5">
+      {METRIC_DEFS.map((m) => {
+        const v = metrics[m.key];
+        if (v === undefined) return null;
+        const isOpen = m.key === "open_position";
+        const color = isOpen ? (v >= 0 ? "#4ADE80" : "#F87171") : m.color;
+        return (
+          <span key={m.key} className="text-[10px] font-mono" style={{ color: color || "var(--mp-text-6)" }}>
+            {m.label}: {isOpen && v >= 0 ? "+" : ""}{fmtNum(v)} MWh
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function TreeNode({ label, sublabel, mw, metrics, color, depth, children, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen ?? depth < 2);
   const hasChildren = !!children;
   return (
@@ -424,6 +454,7 @@ function TreeNode({ label, sublabel, mw, color, depth, children, defaultOpen }) 
         </div>
         <span className="text-xs font-mono text-[var(--mp-text-4)]">{fmtNum(mw)} MW</span>
       </div>
+      <MetricsRow metrics={metrics} />
       {hasChildren && open && <div>{children}</div>}
     </div>
   );
@@ -434,25 +465,29 @@ function TreeTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [country, setCountry] = useState("");
+  const [date, setDate] = useState(isoDaysAgo(0));
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams(country ? { country } : {});
+    const params = new URLSearchParams({ ...(country ? { country } : {}), date });
     fetch(`/api/portfolio/tree?${params.toString()}`)
       .then((r) => r.json())
       .then((json) => { if (json.error) setError(json.error); else setTree(json.portfolio); })
       .catch((e) => setError(String(e.message || e)))
       .finally(() => setLoading(false));
-  }, [country]);
+  }, [country, date]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h3 className="text-sm tracking-[0.15em] text-[var(--mp-text-4)] font-mono uppercase">Portfolio → TSO → Technologie</h3>
-        <select className={inputCls + " w-auto"} value={country} onChange={(e) => setCountry(e.target.value)}>
-          <option value="">Tous les pays</option>
-          {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <div className="flex gap-2">
+          <input type="date" className={inputCls + " w-auto"} value={date} onChange={(e) => setDate(e.target.value)} />
+          <select className={inputCls + " w-auto"} value={country} onChange={(e) => setCountry(e.target.value)}>
+            <option value="">Tous les pays</option>
+            {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
       </div>
 
       {error && <div className="border border-red-500/40 text-red-400 text-xs font-mono px-4 py-3">{error}</div>}
@@ -460,7 +495,7 @@ function TreeTab() {
 
       {tree && !loading && (
         <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-2">
-          <TreeNode label="Portfolio" sublabel={`${tree.asset_count} actifs`} mw={tree.capacity_mw} depth={0} defaultOpen>
+          <TreeNode label="Portfolio" sublabel={`${tree.asset_count} actifs · ${date}`} mw={tree.capacity_mw} metrics={tree.metrics} depth={0} defaultOpen>
             {tree.tso_nodes.length === 0 ? (
               <div className="pl-6 py-4 text-xs font-mono text-[var(--mp-text-6)]">Aucun actif à agréger.</div>
             ) : (
@@ -470,6 +505,7 @@ function TreeTab() {
                   label={tso.tso}
                   sublabel={tso.country}
                   mw={tso.capacity_mw}
+                  metrics={tso.metrics}
                   depth={1}
                 >
                   {tso.technologies.map((tech) => (
@@ -478,10 +514,11 @@ function TreeTab() {
                       label={ASSET_TYPES.find((t) => t.key === tech.asset_type)?.label || tech.asset_type}
                       color={typeColor(tech.asset_type)}
                       mw={tech.capacity_mw}
+                      metrics={tech.metrics}
                       depth={2}
                     >
                       {tech.assets.map((a) => (
-                        <TreeNode key={a.id} label={a.name} sublabel={a.status} mw={a.capacity_mw} depth={3} />
+                        <TreeNode key={a.id} label={a.name} sublabel={a.status} mw={a.capacity_mw} metrics={a.metrics} depth={3} />
                       ))}
                     </TreeNode>
                   ))}
