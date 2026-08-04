@@ -588,6 +588,11 @@ function SelectableTreeNode({ label, sublabel, mw, nodeKey, depth, children, sel
   );
 }
 
+const POWER_UNITS = ["kW", "MW", "GW"];
+const ENERGY_UNITS = ["kWh", "MWh", "GWh", "TWh"];
+const POWER_FACTORS = { kW: 1000, MW: 1, GW: 0.001 };
+const ENERGY_FACTORS = { kWh: 1000, MWh: 1, GWh: 0.001, TWh: 0.000001 };
+
 function TimeseriesExplorerTab() {
   const [treeData, setTreeData] = useState(null);
   const [loadingTree, setLoadingTree] = useState(true);
@@ -599,6 +604,16 @@ function TimeseriesExplorerTab() {
   const [result, setResult] = useState(null);
   const [loadingChart, setLoadingChart] = useState(false);
   const [chartError, setChartError] = useState(null);
+  const [displayUnit, setDisplayUnit] = useState("MW");
+  const [viewMode, setViewMode] = useState("chart"); // chart | table
+
+  const isEnergyMode = result?.unit === "MWh";
+  const unitOptions = isEnergyMode ? ENERGY_UNITS : POWER_UNITS;
+  const unitFactor = (isEnergyMode ? ENERGY_FACTORS : POWER_FACTORS)[displayUnit] ?? 1;
+
+  useEffect(() => {
+    if (result) setDisplayUnit(result.unit === "MWh" ? "MWh" : "MW");
+  }, [result?.unit]);
 
   useEffect(() => {
     fetch("/api/portfolio/tree")
@@ -656,10 +671,13 @@ function TimeseriesExplorerTab() {
     }));
     return sortedTs.map((t) => {
       const row = { t: formatBucketLabel(t, resolution) };
-      seriesMaps.forEach((sm) => { row[sm.key] = sm.map.get(t) ?? null; });
+      seriesMaps.forEach((sm) => {
+        const raw = sm.map.get(t);
+        row[sm.key] = raw === undefined || raw === null ? null : Number((raw * unitFactor).toFixed(4));
+      });
       return row;
     });
-  }, [result, resolution]);
+  }, [result, resolution, unitFactor]);
 
   const lineDefs = result
     ? result.series.map((s, i) => ({
@@ -749,24 +767,69 @@ function TimeseriesExplorerTab() {
 
           {result && (
             <div className="border border-[var(--mp-border)] bg-[var(--mp-panel)] p-4">
-              <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide mb-2">
-                Valeurs en {result.unit} {result.unit === "MWh" ? "(volume cumulé par pas)" : "(puissance moyenne par pas)"}
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                <div className="text-[10px] text-[var(--mp-text-6)] uppercase tracking-wide">
+                  {isEnergyMode ? "Volume cumulé par pas" : "Puissance moyenne par pas"}
+                </div>
+                <div className="flex items-center gap-3">
+                  <select className={inputCls + " w-auto"} value={displayUnit} onChange={(e) => setDisplayUnit(e.target.value)}>
+                    {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <div className="flex border border-[var(--mp-border)]">
+                    <button
+                      className={`px-2.5 py-1 text-[10px] font-mono ${viewMode === "chart" ? "bg-amber-500/15 text-amber-400" : "text-[var(--mp-text-6)]"}`}
+                      onClick={() => setViewMode("chart")}
+                    >
+                      Graphique
+                    </button>
+                    <button
+                      className={`px-2.5 py-1 text-[10px] font-mono border-l border-[var(--mp-border)] ${viewMode === "table" ? "bg-amber-500/15 text-amber-400" : "text-[var(--mp-text-6)]"}`}
+                      onClick={() => setViewMode("table")}
+                    >
+                      Table
+                    </button>
+                  </div>
+                </div>
               </div>
+
               {chartData.length === 0 ? (
                 <div className="text-xs font-mono text-[var(--mp-text-6)] text-center py-8">Aucune donnée sur cette période/résolution.</div>
-              ) : (
+              ) : viewMode === "chart" ? (
                 <ResponsiveContainer width="100%" height={340}>
                   <LineChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="2 4" stroke="var(--mp-grid)" vertical={false} />
                     <XAxis dataKey="t" tick={{ fontSize: 9, fontFamily: "monospace" }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} label={{ value: result.unit, angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--mp-text-6)" }} />
-                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => v === null ? "—" : `${fmtNum(v)} ${result.unit}`} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} label={{ value: displayUnit, angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--mp-text-6)" }} />
+                    <Tooltip contentStyle={{ background: "var(--mp-tooltip-bg)", border: "1px solid var(--mp-tooltip-border)", fontFamily: "monospace", fontSize: 11 }} labelStyle={{ color: "var(--mp-tooltip-label)" }} formatter={(v) => v === null ? "—" : `${fmtNum(v, 3)} ${displayUnit}`} />
                     <Legend wrapperStyle={{ fontSize: 10, fontFamily: "monospace" }} />
                     {lineDefs.map((l) => (
                       <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color} strokeWidth={1.75} dot={chartData.length < 40} isAnimationActive={false} connectNulls />
                     ))}
                   </LineChart>
                 </ResponsiveContainer>
+              ) : (
+                <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                  <table className="w-full text-xs font-mono">
+                    <thead className="sticky top-0 bg-[var(--mp-panel)]">
+                      <tr className="border-b border-[var(--mp-border)] text-[var(--mp-text-6)] uppercase tracking-wide">
+                        <th className="text-left px-3 py-2">Pas</th>
+                        {lineDefs.map((l) => (
+                          <th key={l.key} className="text-right px-3 py-2" style={{ color: l.color }}>{l.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chartData.map((row, i) => (
+                        <tr key={i} className="border-b border-[var(--mp-border)] text-[var(--mp-text-3)]">
+                          <td className="px-3 py-1.5">{row.t}</td>
+                          {lineDefs.map((l) => (
+                            <td key={l.key} className="px-3 py-1.5 text-right">{row[l.key] === null || row[l.key] === undefined ? "—" : fmtNum(row[l.key], 3)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
