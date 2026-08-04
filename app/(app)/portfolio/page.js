@@ -595,18 +595,23 @@ const RESOLUTION_OPTIONS = [
 ];
 const PALETTE = ["#E8C468", "#3FA796", "#4A94C4", "#8B6FC9", "#C97A5A", "#F87171", "#4ADE80", "#60A5FA", "#FBBF24", "#F472B6"];
 
-function formatBucketLabel(iso, resolution) {
+// Fuseaux proposés: UTC (référence des données), Berlin/Paris (Europe centrale,
+// où opère Meridian Power aujourd'hui), Tunis (relocalisation prévue),
+// Londres (référence marché GB), + le fuseau local du navigateur en dernier.
+const TIMEZONES = ["UTC", "Europe/Berlin", "Europe/Paris", "Africa/Tunis", "Europe/London"];
+
+function formatBucketLabel(iso, resolution, timeZone = "UTC") {
   const d = new Date(iso);
-  // timeZone: "UTC" explicite partout — les timestamps en base sont en UTC
-  // (ENTSO-E, marché day-ahead), donc l'affichage doit rester en UTC quel
-  // que soit le fuseau du navigateur, pour ne jamais désynchroniser
-  // l'étiquette du point réel qu'elle représente.
+  const suffix = timeZone === "UTC" ? "z" : "";
+  // Les frontières de bucket (calcul backend) restent alignées sur le
+  // calendrier UTC quelle que soit la résolution — seul l'AFFICHAGE de
+  // l'heure/date change avec le fuseau choisi ici.
   if (["15m", "30m", "1h", "4h"].includes(resolution)) {
-    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + "z";
+    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone }) + suffix;
   }
-  if (resolution === "1D") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "UTC" });
-  if (resolution === "1W") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) + " (sem.)";
-  if (resolution === "1M") return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit", timeZone: "UTC" });
+  if (resolution === "1D") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone });
+  if (resolution === "1W") return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone }) + " (sem.)";
+  if (resolution === "1M") return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit", timeZone });
   if (resolution === "1Q") return `T${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}`;
   if (resolution === "1Y") return `${d.getUTCFullYear()}`;
   return iso;
@@ -644,6 +649,7 @@ function TimeseriesExplorerTab() {
   const [loadingChart, setLoadingChart] = useState(false);
   const [chartError, setChartError] = useState(null);
   const [displayUnit, setDisplayUnit] = useState("MW");
+  const [timezone, setTimezone] = useState("UTC");
   const [viewMode, setViewMode] = useState("chart"); // chart | table
 
   const isEnergyMode = result?.unit === "MWh";
@@ -708,14 +714,14 @@ function TimeseriesExplorerTab() {
       map: new Map(s.points.map((p) => [p.t, p.value])),
     }));
     return sortedTs.map((t) => {
-      const row = { t: formatBucketLabel(t, resolution) };
+      const row = { t: formatBucketLabel(t, resolution, timezone) };
       seriesMaps.forEach((sm) => {
         const raw = sm.map.get(t);
         row[sm.key] = convertUnit(raw, result.unit, displayUnit);
       });
       return row;
     });
-  }, [result, resolution, displayUnit]);
+  }, [result, resolution, displayUnit, timezone]);
 
   const lineDefs = result
     ? result.series.map((s, i) => ({
@@ -785,6 +791,12 @@ function TimeseriesExplorerTab() {
                 <label className={labelCls}>Résolution</label>
                 <select className={inputCls} value={resolution} onChange={(e) => setResolution(e.target.value)}>
                   {RESOLUTION_OPTIONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Fuseau</label>
+                <select className={inputCls} value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                  {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
                 </select>
               </div>
               <div>
