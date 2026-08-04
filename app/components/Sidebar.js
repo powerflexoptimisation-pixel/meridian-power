@@ -9,6 +9,7 @@ const NAV = [
   { label: "Marchés", href: "/marches" },
   { label: "Grid Real Time", href: "/grid-realtime" },
   { label: "Forecast for Trading", href: "/forecast-trading" },
+  { label: "Portfolio", href: "/portfolio" },
   {
     label: "Analysis",
     badge: "Standard",
