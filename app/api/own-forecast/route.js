@@ -2,9 +2,21 @@
 // Usage: /api/own-forecast?from=2026-07-25&to=2026-08-02
 // Fusionne notre prévision maison, la prévision ENTSO-E, et le réalisé,
 // pour Wind Onshore/Offshore/Solar (DE uniquement pour l'instant).
+//
+// Deux vues de notre propre prévision, depuis la correction du bug de
+// vintages (voir lib/db.js):
+// - "own" (nowcast): dernière valeur prédite pour chaque heure, quel que
+//   soit l'horizon — c'est notre différenciateur (mis à jour toutes les
+//   1-3h), affiché sur le graphique.
+// - "own_dayahead": vintage généré au moins 18h avant l'échéance — seule
+//   base COMPARABLE à ENTSO-E (qui ne fait qu'une prévision day-ahead,
+//   jamais retouchée). Utilisée pour le calcul de précision (MAPE/MAE).
+// Comparer le nowcast à ENTSO-E aurait été trompeur: un nowcast fait 1h
+// avant l'échéance est presque toujours plus précis qu'un day-ahead par
+// nature (horizon plus court), pas grâce à la qualité du modèle.
 
 import { NextResponse } from "next/server";
-import { getOwnForecastHistory, getWindSolarForecastHistory, getGenerationHistory, getForecastModel } from "../../../lib/db";
+import { getOwnForecastLatest, getOwnForecastDayAhead, getWindSolarForecastHistory, getGenerationHistory, getForecastModel } from "../../../lib/db";
 import { berlinDateToUTC } from "../../../lib/tz";
 
 export const dynamic = "force-dynamic";
@@ -28,25 +40,29 @@ export async function GET(request) {
   }
 
   try {
-    const [ownForecast, entsoeForecast, actual, models] = await Promise.all([
-      getOwnForecastHistory(COUNTRY, from, to),
+    const [ownNowcast, ownDayAhead, entsoeForecast, actual, models] = await Promise.all([
+      getOwnForecastLatest(COUNTRY, from, to),
+      getOwnForecastDayAhead(COUNTRY, from, to, 18),
       getWindSolarForecastHistory(COUNTRY, from, to),
       getGenerationHistory(COUNTRY, from, to),
       Promise.all(FUELS.map((f) => getForecastModel(COUNTRY, f))),
     ]);
 
-    const ownByTs = new Map(ownForecast.map((p) => [p.timestamp, p]));
+    const ownByTs = new Map(ownNowcast.map((p) => [p.timestamp, p]));
+    const ownDaByTs = new Map(ownDayAhead.map((p) => [p.timestamp, p]));
     const entsoeByTs = new Map(entsoeForecast.map((p) => [p.timestamp, p]));
     const actualByTs = new Map(actual.map((p) => [p.timestamp, p]));
-    const allTs = [...new Set([...ownByTs.keys(), ...entsoeByTs.keys(), ...actualByTs.keys()])].sort();
+    const allTs = [...new Set([...ownByTs.keys(), ...ownDaByTs.keys(), ...entsoeByTs.keys(), ...actualByTs.keys()])].sort();
 
     const merged = allTs.map((ts) => {
       const own = ownByTs.get(ts) || {};
+      const ownDa = ownDaByTs.get(ts) || {};
       const entsoe = entsoeByTs.get(ts) || {};
       const act = actualByTs.get(ts) || {};
       const row = { timestamp: ts };
       for (const fuel of FUELS) {
         row[`${fuel}_own`] = own[fuel] ?? null;
+        row[`${fuel}_own_dayahead`] = ownDa[fuel] ?? null;
         row[`${fuel}_entsoe`] = entsoe[fuel] ?? null;
         row[`${fuel}_actual`] = act[fuel] ?? null;
       }
@@ -72,7 +88,9 @@ export async function GET(request) {
       from: from.toISOString(),
       to: to.toISOString(),
       points: merged,
-      accuracy_own: accuracyFor("own"),
+      // Précision calculée sur le vintage day-ahead-équivalent — seule
+      // comparaison juste face à ENTSO-E (voir commentaire en tête de fichier).
+      accuracy_own: accuracyFor("own_dayahead"),
       accuracy_entsoe: accuracyFor("entsoe"),
       models: Object.fromEntries(FUELS.map((f, i) => [f, models[i]])),
     });

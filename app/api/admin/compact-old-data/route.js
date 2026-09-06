@@ -127,6 +127,21 @@ export async function GET(request) {
     results.market_wind_solar_forecast = { error: String(err.message || err) };
   }
 
+  // --- own_wind_solar_forecast: purge des vintages superflus (voir
+  // lib/db.js pruneOwnForecastVintages) — chaque run horaire ajoute des
+  // lignes plutôt que d'écraser (nécessaire pour un MAPE day-ahead-
+  // équivalent juste face à ENTSO-E), donc sans purge la table grossirait
+  // sans limite. Au-delà de 10j, ne garde que le dernier vintage par
+  // (ts, fuel_type).
+  try {
+    const { pruneOwnForecastVintages } = await import("../../../../lib/db");
+    await pruneOwnForecastVintages(10);
+    await sql`VACUUM FULL own_wind_solar_forecast`.catch(() => {});
+    results.own_wind_solar_forecast_vintages = { pruned: true };
+  } catch (err) {
+    results.own_wind_solar_forecast_vintages = { error: String(err.message || err) };
+  }
+
   await sql`VACUUM FULL market_prices`.catch((e) => { results.vacuum_prices_error = String(e.message || e); });
   await sql`VACUUM FULL market_load`.catch((e) => { results.vacuum_load_error = String(e.message || e); });
   await sql`VACUUM FULL market_generation`.catch((e) => { results.vacuum_generation_error = String(e.message || e); });

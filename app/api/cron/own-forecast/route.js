@@ -29,6 +29,12 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Un seul generated_at pour tout le run — cohérent avec le nouveau schéma
+  // à vintages (voir lib/db.js): permet de retrouver facilement "tout ce
+  // qu'on a prédit à ce moment précis" et rend ON CONFLICT DO NOTHING
+  // idempotent en cas de retry exact du même run.
+  const generatedAt = new Date();
+
   const results = {};
   for (const fuel of FUELS) {
     try {
@@ -39,12 +45,12 @@ export async function GET(request) {
       }
       const weather = await fetchWeatherForecast(fuel, 7);
       const forecast = predict(model, weather);
-      const stored = await upsertOwnForecast(COUNTRY, fuel, forecast);
+      const stored = await upsertOwnForecast(COUNTRY, fuel, forecast, generatedAt);
       results[fuel] = { stored, model_updated_at: model.updated_at };
     } catch (err) {
       results[fuel] = { stored: 0, error: String(err.message || err) };
     }
   }
 
-  return NextResponse.json({ ran_at: new Date().toISOString(), country: COUNTRY, results });
+  return NextResponse.json({ ran_at: generatedAt.toISOString(), country: COUNTRY, results });
 }
