@@ -10,12 +10,18 @@ export async function GET() {
       client_secret: "ntp_k1hTO7De2KPhipddxiH1",
     }),
   });
-  const tokenJson = await tokenRes.json();
-  const token = tokenJson.access_token;
+  const token = (await tokenRes.json()).access_token;
 
-  const res = await fetch("https://ds.netztransparenz.de/api/v1/data/hochrechnung/Wind/2026-09-05T02:00:00/2026-09-05T03:00:00", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const text = await res.text();
-  return NextResponse.json({ status: res.status, raw: text });
+  // Chercher le pic max de Wind Onshore ENTSO-E sur les 30 derniers jours
+  // n'est pas possible ici (pas de connexion DB dans ce debug volontairement
+  // minimal) — on teste juste plusieurs jours au hasard sur le dernier mois.
+  const dates = ["2026-08-10", "2026-08-20", "2026-09-01", "2026-09-05"];
+  const results = {};
+  for (const d of dates) {
+    const res = await fetch(`https://ds.netztransparenz.de/api/v1/data/hochrechnung/Wind/${d}T12:00:00/${d}T13:00:00`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    results[d] = await res.text();
+  }
+  return NextResponse.json(results);
 }
