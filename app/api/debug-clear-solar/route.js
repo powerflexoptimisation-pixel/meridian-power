@@ -10,6 +10,8 @@ function isAuthorized(request) {
 export async function GET(request) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sql = getSql();
-  const result = await sql`DELETE FROM own_wind_solar_forecast WHERE fuel_type = 'Solar'`;
-  return NextResponse.json({ ok: true, deleted: result.length ?? result.count ?? "unknown" });
+  const before = await sql`SELECT COUNT(*) AS n FROM own_wind_solar_forecast WHERE fuel_type = 'Solar'`;
+  await sql`DELETE FROM own_wind_solar_forecast WHERE fuel_type = 'Solar'`;
+  const after = await sql`SELECT COUNT(*) AS n FROM own_wind_solar_forecast WHERE fuel_type = 'Solar'`;
+  return NextResponse.json({ before: before[0].n, after: after[0].n });
 }
